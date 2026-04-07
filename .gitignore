@@ -1,0 +1,14 @@
+# Keep legacy stack out of this repo
+/3-x-ui/
+
+# Python caches and virtualenvs
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+
+# OS/editor files
+.DS_Store

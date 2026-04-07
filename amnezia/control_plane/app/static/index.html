@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HorizonNetVPN Control Plane</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>HorizonNetVPN Control Plane</h1>
+      <p class="muted">Fast admin UI for create/renew/revoke/config.</p>
+
+      <section class="card">
+        <h2>Create client</h2>
+        <form id="create-form">
+          <label>
+            Telegram User ID
+            <input id="telegram_user_id" type="number" min="1" required />
+          </label>
+          <label>
+            Plan days
+            <input id="plan_days" type="number" min="1" value="30" required />
+          </label>
+          <label>
+            Remark
+            <input id="remark" type="text" placeholder="pilot-user" />
+          </label>
+          <button type="submit">Create</button>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Client actions</h2>
+        <div class="row">
+          <label>
+            Client ID
+            <input id="client_id" type="text" placeholder="uuid" />
+          </label>
+          <label>
+            Add days
+            <input id="add_days" type="number" min="1" value="30" />
+          </label>
+        </div>
+        <div class="actions">
+          <button id="renew-btn">Renew</button>
+          <button id="revoke-btn" class="warn">Revoke</button>
+          <button id="config-btn">Get Config</button>
+          <button id="refresh-btn">Refresh List</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Response</h2>
+        <pre id="response-box">No actions yet.</pre>
+      </section>
+
+      <section class="card">
+        <h2>Clients</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Client ID</th>
+                <th>Telegram ID</th>
+                <th>Active</th>
+                <th>Expires (UTC)</th>
+              </tr>
+            </thead>
+            <tbody id="clients-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Traffic stats (protocol + per-user)</h2>
+        <div class="stats-grid">
+          <div class="metric">
+            <span class="metric-label">Protocol</span>
+            <strong id="metric-protocol">-</strong>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Total Inbound (RX)</span>
+            <strong id="metric-rx">0 B</strong>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Total Outbound (TX)</span>
+            <strong id="metric-tx">0 B</strong>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Total Traffic</span>
+            <strong id="metric-total">0 B</strong>
+          </div>
+        </div>
+        <div class="charts-grid">
+          <div>
+            <h3>Total traffic growth (24h)</h3>
+            <canvas id="traffic-line-chart"></canvas>
+          </div>
+          <div>
+            <h3>Top users by traffic</h3>
+            <canvas id="traffic-user-chart"></canvas>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
