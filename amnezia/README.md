@@ -59,6 +59,10 @@ After switching to a real provider adapter, these numbers should be replaced wit
 
 See `DEPLOY.md` for GitHub -> VPS deployment with systemd + nginx.
 
+## WireGuard backend (wg-easy)
+
+See `docs/WG_BACKEND.md` — Docker + wg-easy, firewall, и план интеграции с `VpnProvider` вместо `MockProvider`.
+
 ## Next production step
 
 Replace `MockProvider` with a real backend adapter:

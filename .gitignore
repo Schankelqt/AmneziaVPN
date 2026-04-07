@@ -12,3 +12,7 @@ venv/
 
 # OS/editor files
 .DS_Store
+
+# Secrets (wg-easy, local env)
+amnezia/wg_backend/.env
+amnezia/control_plane/.env

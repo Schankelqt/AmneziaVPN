@@ -1,0 +1,28 @@
+# WireGuard backend with web UI: https://github.com/wg-easy/wg-easy
+# Copy .env.example -> .env, set WG_HOST and WG_EASY_PASSWORD, then: docker compose up -d
+
+services:
+  wg-easy:
+    image: ghcr.io/wg-easy/wg-easy:15
+    container_name: wg-easy
+    restart: unless-stopped
+    environment:
+      WG_HOST: ${WG_HOST}
+      PASSWORD: ${WG_EASY_PASSWORD}
+    volumes:
+      - wg_easy_data:/etc/wireguard
+      - /lib/modules:/lib/modules:ro
+    ports:
+      # WireGuard — must be reachable from the internet (same host public IP as WG_HOST)
+      - "51820:51820/udp"
+      # Web UI — only localhost; open via SSH tunnel or nginx + auth
+      - "127.0.0.1:51821:51821/tcp"
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+
+volumes:
+  wg_easy_data:

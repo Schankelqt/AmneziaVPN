@@ -1,0 +1,15 @@
+[Unit]
+Description=HorizonNetVPN Control Plane (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/horizonnetvpn/app/amnezia/control_plane
+EnvironmentFile=-/opt/horizonnetvpn/app/amnezia/control_plane/.env
+ExecStart=/opt/horizonnetvpn/app/amnezia/control_plane/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8090
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

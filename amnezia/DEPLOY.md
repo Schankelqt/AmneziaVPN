@@ -116,33 +116,24 @@ Open `http://SERVER_IP:8090` and confirm the frontend loads.
 
 ## 4) Run as systemd service
 
-Create `/etc/systemd/system/horizonnetvpn-control-plane.service`:
+Готовый unit-файл лежит в репозитории: `amnezia/deploy/horizonnetvpn-control-plane.service` (слушает только `127.0.0.1:8090`).
 
-```ini
-[Unit]
-Description=HorizonNetVPN Control Plane
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=/opt/horizonnetvpn/app/amnezia/control_plane
-EnvironmentFile=/opt/horizonnetvpn/app/amnezia/control_plane/.env
-ExecStart=/opt/horizonnetvpn/app/amnezia/control_plane/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8090
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable service:
+На сервере:
 
 ```bash
-systemctl daemon-reload
-systemctl enable --now horizonnetvpn-control-plane
-systemctl status horizonnetvpn-control-plane
+sudo cp /opt/horizonnetvpn/app/amnezia/deploy/horizonnetvpn-control-plane.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now horizonnetvpn-control-plane
+sudo systemctl status horizonnetvpn-control-plane
 ```
+
+Проверка:
+
+```bash
+curl -sS http://127.0.0.1:8090/health
+```
+
+Дальше откройте админку через **nginx** (§5), а не напрямую порт 8090.
 
 ## 5) Nginx reverse proxy
 
