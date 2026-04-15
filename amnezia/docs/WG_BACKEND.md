@@ -57,21 +57,17 @@ docker compose version
 ```bash
 cd /opt/horizonnetvpn/app/amnezia/wg_backend
 cp .env.example .env
-nano .env   # WG_HOST=ваш публичный IP или домен, WG_EASY_PASSWORD_HASH=bcrypt хэш пароля
+nano .env   # заполните INIT_* (логин/пароль/host/port) для wg-easy v15
 docker compose up -d
 docker compose ps
 ```
 
 Важно для `wg-easy:15`:
 
-- В контейнер передаётся `PASSWORD_HASH` (bcrypt), а не plain `PASSWORD`.
-- Plain пароль вы задаёте сами и из него генерируете hash:
-
-```bash
-docker run --rm ghcr.io/wg-easy/wg-easy wgpw 'your-strong-password'
-```
-
-- Для API control plane (`WG_EASY_USERNAME`/`WG_EASY_PASSWORD`) указывайте **plain** пароль, которым логинитесь в UI.
+- v15 не использует legacy переменные `PASSWORD`/`PASSWORD_HASH` из v14.
+- Используйте setup wizard в UI или unattended setup через `INIT_*`.
+- Для API control plane (`WG_EASY_USERNAME`/`WG_EASY_PASSWORD`) используйте
+  обычный пароль (plain), который вы задали в `INIT_PASSWORD`/UI.
 
 ### 3) Firewall
 

@@ -1,5 +1,6 @@
 # WireGuard backend with web UI: https://github.com/wg-easy/wg-easy
-# Copy .env.example -> .env, set WG_HOST and WG_EASY_PASSWORD_HASH, then: docker compose up -d
+# v15 uses setup wizard or INIT_* unattended setup (not legacy PASSWORD/PASSWORD_HASH vars).
+# Copy .env.example -> .env, set INIT_* and WG host/port, then: docker compose up -d
 
 services:
   wg-easy:
@@ -7,16 +8,24 @@ services:
     container_name: wg-easy
     restart: unless-stopped
     environment:
-      WG_HOST: ${WG_HOST}
-      PASSWORD_HASH: ${WG_EASY_PASSWORD_HASH}
+      # Accessing Web UI over plain HTTP on localhost tunnel requires INSECURE=true.
+      INSECURE: ${WG_EASY_INSECURE}
+      HOST: ${WG_EASY_UI_HOST}
+      PORT: ${WG_EASY_UI_PORT}
+      WG_PORT: ${WG_EASY_WG_PORT}
+      INIT_ENABLED: ${WG_EASY_INIT_ENABLED}
+      INIT_USERNAME: ${WG_EASY_INIT_USERNAME}
+      INIT_PASSWORD: ${WG_EASY_INIT_PASSWORD}
+      INIT_HOST: ${WG_EASY_INIT_HOST}
+      INIT_PORT: ${WG_EASY_INIT_PORT}
     volumes:
       - wg_easy_data:/etc/wireguard
       - /lib/modules:/lib/modules:ro
     ports:
       # WireGuard — must be reachable from the internet (same host public IP as WG_HOST)
-      - "51820:51820/udp"
+      - "${WG_EASY_WG_PORT:-51820}:${WG_EASY_WG_PORT:-51820}/udp"
       # Web UI — only localhost; open via SSH tunnel or nginx + auth
-      - "127.0.0.1:51821:51821/tcp"
+      - "127.0.0.1:${WG_EASY_UI_PORT:-51821}:${WG_EASY_UI_PORT:-51821}/tcp"
     cap_add:
       - NET_ADMIN
       - SYS_MODULE
