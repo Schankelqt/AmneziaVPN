@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -56,11 +57,15 @@ class WgEasyProvider(VpnProvider):
         # wg-easy requires unique human-readable name.
         display_name = (remark or "horizonnetvpn-client").strip()[:48]
         unique_name = f"{display_name}-{client_id[:8]}"
+        # Some wg-easy v15 builds require expiresAt in create payload.
+        # Access period is currently enforced by control_plane logic, so we set
+        # a long horizon in backend and revoke explicitly via API when needed.
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=3650)).isoformat()
 
         created = self._request(
             "POST",
             "/api/client",
-            json={"name": unique_name},
+            json={"name": unique_name, "expiresAt": expires_at},
             expected_status={200, 201},
         ).json()
 
