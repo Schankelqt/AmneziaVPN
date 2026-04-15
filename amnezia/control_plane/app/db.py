@@ -24,11 +24,35 @@ def init_db() -> None:
 
 def _apply_lightweight_migrations() -> None:
     inspector = inspect(engine)
-    if "clients" in inspector.get_table_names():
+    table_names = set(inspector.get_table_names())
+    if "clients" in table_names:
         columns = {col["name"] for col in inspector.get_columns("clients")}
         if "user_name" not in columns:
             with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE clients ADD COLUMN user_name VARCHAR(128)"))
+        with engine.begin() as conn:
+            if engine.dialect.name == "postgresql":
+                conn.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_active_telegram_user_id "
+                        "ON clients (telegram_user_id) WHERE active = true"
+                    )
+                )
+            else:
+                conn.execute(
+                    text(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS uq_clients_active_telegram_user_id "
+                        "ON clients (telegram_user_id) WHERE active = 1"
+                    )
+                )
+
+    if "traffic_samples" in table_names:
+        traffic_columns = {col["name"] for col in inspector.get_columns("traffic_samples")}
+        with engine.begin() as conn:
+            if "raw_rx_bytes" not in traffic_columns:
+                conn.execute(text("ALTER TABLE traffic_samples ADD COLUMN raw_rx_bytes BIGINT DEFAULT 0"))
+            if "raw_tx_bytes" not in traffic_columns:
+                conn.execute(text("ALTER TABLE traffic_samples ADD COLUMN raw_tx_bytes BIGINT DEFAULT 0"))
 
 
 def get_db() -> Generator[Session, None, None]:

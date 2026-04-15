@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, DateTime, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .db import Base
@@ -8,6 +8,15 @@ from .db import Base
 
 class ClientRecord(Base):
     __tablename__ = "clients"
+    __table_args__ = (
+        Index(
+            "uq_clients_active_telegram_user_id",
+            "telegram_user_id",
+            unique=True,
+            sqlite_where=text("active = 1"),
+            postgresql_where=text("active = true"),
+        ),
+    )
 
     client_id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
     telegram_user_id: Mapped[int] = mapped_column(BigInteger, index=True)
@@ -30,6 +39,8 @@ class TrafficSample(Base):
     client_id: Mapped[str] = mapped_column(String(64), index=True)
     telegram_user_id: Mapped[int] = mapped_column(BigInteger, index=True)
     user_name: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    raw_rx_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    raw_tx_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     rx_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     tx_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     total_bytes: Mapped[int] = mapped_column(BigInteger, default=0)

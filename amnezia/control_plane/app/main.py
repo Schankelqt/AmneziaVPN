@@ -2,9 +2,9 @@ import base64
 import os
 import secrets
 import subprocess
-from collections import deque
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from starlette.requests import Request
 from starlette.responses import Response
 from sqlalchemy.orm import Session
@@ -71,7 +72,6 @@ def _build_provider() -> tuple[str, VpnProvider]:
 
 
 provider_kind, provider = _build_provider()
-traffic_history: deque[dict[str, int | str]] = deque(maxlen=50000)
 MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
 _http_basic = HTTPBasic(auto_error=False)
@@ -193,7 +193,19 @@ def _create_client_record(
         active=True,
     )
     db.add(record)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        # Keep provider/backend consistent when DB rejects duplicate active entry.
+        try:
+            provider.revoke_client(provider_ref)
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=409,
+            detail="Active client already exists for this telegram_user_id",
+        ) from exc
     db.refresh(record)
     return record
 
@@ -209,21 +221,27 @@ def _parse_user_id_filter(raw: str | None) -> set[int]:
         try:
             parsed = int(value)
         except ValueError:
-            continue
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid user_ids value: {value}. Use comma-separated positive integers.",
+            ) from None
         if parsed > 0:
             result.add(parsed)
+        else:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid user_ids value: {value}. Use positive integers.",
+            )
     return result
 
 
 def _series_window(
-    now: datetime, scale: str, date_from_raw: str | None, date_to_raw: str | None
+    now: datetime, scale: Literal["day", "week", "month"], date_from: date | None, date_to: date | None
 ) -> tuple[datetime, datetime, timedelta]:
-    valid_scales = {"day", "week", "month"}
-    normalized_scale = scale if scale in valid_scales else "day"
-    if date_from_raw or date_to_raw:
+    if date_from or date_to:
         today = now.date()
-        from_date = date.fromisoformat(date_from_raw) if date_from_raw else today
-        to_date = date.fromisoformat(date_to_raw) if date_to_raw else from_date
+        from_date = date_from or today
+        to_date = date_to or from_date
         if to_date < from_date:
             from_date, to_date = to_date, from_date
         start = datetime.combine(from_date, time.min, tzinfo=MOSCOW_TZ)
@@ -231,9 +249,9 @@ def _series_window(
         span_days = (to_date - from_date).days + 1
         bucket = timedelta(hours=1) if span_days <= 2 else timedelta(days=1)
         return start, end, bucket
-    if normalized_scale == "week":
+    if scale == "week":
         return now - timedelta(days=7), now, timedelta(days=1)
-    if normalized_scale == "month":
+    if scale == "month":
         return now - timedelta(days=30), now, timedelta(days=1)
     return now - timedelta(hours=24), now, timedelta(hours=1)
 
@@ -274,8 +292,10 @@ def _store_traffic_samples(
             .first()
         )
         if previous:
-            delta_rx = max(0, raw_rx - int(previous.rx_bytes))
-            delta_tx = max(0, raw_tx - int(previous.tx_bytes))
+            prev_raw_rx = int(previous.raw_rx_bytes or previous.rx_bytes or 0)
+            prev_raw_tx = int(previous.raw_tx_bytes or previous.tx_bytes or 0)
+            delta_rx = max(0, raw_rx - prev_raw_rx)
+            delta_tx = max(0, raw_tx - prev_raw_tx)
         else:
             delta_rx = 0
             delta_tx = 0
@@ -284,22 +304,13 @@ def _store_traffic_samples(
             client_id=item.client_id,
             telegram_user_id=item.telegram_user_id,
             user_name=item.user_name,
-            rx_bytes=raw_rx,
-            tx_bytes=raw_tx,
-            total_bytes=raw_rx + raw_tx,
+            raw_rx_bytes=raw_rx,
+            raw_tx_bytes=raw_tx,
+            rx_bytes=delta_rx,
+            tx_bytes=delta_tx,
+            total_bytes=delta_rx + delta_tx,
         )
         db.add(sample)
-        # Save deltas in lightweight in-memory history for immediate charts.
-        traffic_history.append(
-            {
-                "ts": now.isoformat(),
-                "client_id": item.client_id,
-                "telegram_user_id": item.telegram_user_id,
-                "user_name": item.user_name or "",
-                "delta_rx": delta_rx,
-                "delta_tx": delta_tx,
-            }
-        )
     db.commit()
 
 
@@ -368,10 +379,12 @@ def traffic_logs(limit: int = 100, db: Session = Depends(get_db)) -> dict:
     )
     items = [
         {
-            "sample_at": row.sample_at,
+            "sample_at": _to_moscow(row.sample_at),
             "client_id": row.client_id,
             "telegram_user_id": row.telegram_user_id,
             "user_name": row.user_name,
+            "raw_rx_bytes": row.raw_rx_bytes,
+            "raw_tx_bytes": row.raw_tx_bytes,
             "rx_bytes": row.rx_bytes,
             "tx_bytes": row.tx_bytes,
             "total_bytes": row.total_bytes,
@@ -461,9 +474,9 @@ def list_clients(db: Session = Depends(get_db)) -> list[ClientResponse]:
 
 @app.get("/v1/stats/traffic")
 def traffic_stats(
-    scale: str = "day",
-    date_from: str | None = None,
-    date_to: str | None = None,
+    scale: Literal["day", "week", "month"] = "day",
+    date_from: date | None = None,
+    date_to: date | None = None,
     user_ids: str | None = None,
     db: Session = Depends(get_db),
 ) -> dict:
@@ -485,22 +498,23 @@ def traffic_stats(
         # Journal traffic samples so we can filter by date/range later.
         _store_traffic_samples(db, now, records, snapshot)
         start, end, bucket = _series_window(now, scale, date_from, date_to)
+        sample_query = (
+            db.query(TrafficSample)
+            .filter(TrafficSample.sample_at >= start, TrafficSample.sample_at <= end)
+            .order_by(TrafficSample.sample_at.asc())
+        )
+        if selected_user_ids:
+            sample_query = sample_query.filter(TrafficSample.telegram_user_id.in_(selected_user_ids))
+        sample_rows = sample_query.all()
+
         sample_dicts: list[dict[str, int | datetime]] = []
-        for entry in traffic_history:
-            point_ts = datetime.fromisoformat(str(entry["ts"]))
-            if point_ts.tzinfo is None:
-                point_ts = point_ts.replace(tzinfo=timezone.utc)
-            if point_ts < start or point_ts > end:
-                continue
-            tg_id = int(entry.get("telegram_user_id") or 0)
-            if selected_user_ids and tg_id not in selected_user_ids:
-                continue
+        for row in sample_rows:
             sample_dicts.append(
                 {
-                    "sample_at": point_ts,
-                    "telegram_user_id": tg_id,
-                    "delta_rx": int(entry.get("delta_rx") or 0),
-                    "delta_tx": int(entry.get("delta_tx") or 0),
+                    "sample_at": _to_moscow(row.sample_at),
+                    "telegram_user_id": int(row.telegram_user_id),
+                    "delta_rx": int(row.rx_bytes),
+                    "delta_tx": int(row.tx_bytes),
                 }
             )
         series = _build_series_from_samples(start, end, bucket, sample_dicts)
@@ -746,14 +760,22 @@ def bot_provision_access(
         active.revoked_at = _now_moscow()
         active.active = False
         db.commit()
-    record = _create_client_record(
-        db=db,
-        telegram_user_id=telegram_user_id,
-        user_name=payload.user_name,
-        plan_days=payload.plan_days,
-        remark=payload.remark,
-    )
-    return _build_response(record)
+    try:
+        record = _create_client_record(
+            db=db,
+            telegram_user_id=telegram_user_id,
+            user_name=payload.user_name,
+            plan_days=payload.plan_days,
+            remark=payload.remark,
+        )
+        return _build_response(record)
+    except HTTPException as exc:
+        if exc.status_code != 409:
+            raise
+        latest = _active_client_for_telegram_user(db, telegram_user_id)
+        if latest:
+            return _build_response(latest)
+        raise
 
 
 @app.post("/v1/bot/users/{telegram_user_id}/renew", response_model=ClientResponse)
