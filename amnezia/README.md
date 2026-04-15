@@ -52,8 +52,8 @@ The admin UI includes traffic metrics and charts:
 - Per-user traffic usage.
 - 24-hour chart and top-user chart.
 
-Current implementation uses deterministic mock traffic in `MockProvider` mode.
-After switching to a real provider adapter, these numbers should be replaced with real WireGuard/AmneziaWG counters.
+Current implementation uses deterministic mock traffic in `MockProvider` mode by default.
+You can switch to real WireGuard backend via `VPN_PROVIDER=wgeasy` and `WG_EASY_*` env variables.
 
 ## Deploy
 
@@ -65,9 +65,9 @@ See `docs/WG_BACKEND.md` — Docker + wg-easy, firewall, и план интег�
 
 ## Next production step
 
-Replace `MockProvider` with a real backend adapter:
+Switch provider in `amnezia/control_plane/.env`:
 
-- Preferred: managed WireGuard backend with stable API.
-- Fallback: controlled SSH automation on the VPN host.
+- `VPN_PROVIDER=mock` for safe local testing.
+- `VPN_PROVIDER=wgeasy` for real backend integration (`WG_EASY_BASE_URL`, `WG_EASY_USERNAME`, `WG_EASY_PASSWORD` required).
 
 The service API contract stays unchanged for the Telegram bot.

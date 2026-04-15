@@ -13,7 +13,9 @@ from fastapi.staticfiles import StaticFiles
 from starlette.requests import Request
 from starlette.responses import Response
 
+from .provider.base import VpnProvider
 from .provider.mock import MockProvider
+from .provider.wgeasy import WgEasyConfig, WgEasyProvider
 from .schemas import (
     ClientResponse,
     CreateClientRequest,
@@ -21,11 +23,47 @@ from .schemas import (
 )
 
 app = FastAPI(title="HorizonNetVPN Amnezia Control Plane", version="0.1.0")
-provider = MockProvider()
 static_dir = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 clients: dict[str, dict] = {}
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _build_provider() -> tuple[str, VpnProvider]:
+    provider_name = os.environ.get("VPN_PROVIDER", "mock").strip().lower()
+    if provider_name == "mock":
+        return "mock", MockProvider()
+
+    if provider_name == "wgeasy":
+        base_url = os.environ.get("WG_EASY_BASE_URL", "").strip()
+        username = os.environ.get("WG_EASY_USERNAME", "").strip()
+        password = os.environ.get("WG_EASY_PASSWORD", "").strip()
+        timeout_raw = os.environ.get("WG_EASY_TIMEOUT_SECONDS", "10").strip()
+        if not base_url or not username or not password:
+            raise RuntimeError(
+                "VPN_PROVIDER=wgeasy requires WG_EASY_BASE_URL, WG_EASY_USERNAME, WG_EASY_PASSWORD"
+            )
+        return "wgeasy", WgEasyProvider(
+            WgEasyConfig(
+                base_url=base_url,
+                username=username,
+                password=password,
+                verify_tls=_env_bool("WG_EASY_VERIFY_TLS", True),
+                timeout_seconds=float(timeout_raw or "10"),
+            )
+        )
+
+    raise RuntimeError(f"Unsupported VPN_PROVIDER: {provider_name}")
+
+
+provider_kind, provider = _build_provider()
 
 _http_basic = HTTPBasic(auto_error=False)
 
@@ -182,7 +220,7 @@ def list_clients() -> list[ClientResponse]:
 @app.get("/v1/stats/traffic")
 def traffic_stats() -> dict:
     now = datetime.now(tz=timezone.utc)
-    protocol = "amneziawg-mock"
+    protocol = "wireguard-wgeasy" if provider_kind == "wgeasy" else "amneziawg-mock"
 
     per_user = []
     total_rx = 0
@@ -239,7 +277,10 @@ def traffic_stats() -> dict:
 @app.post("/v1/clients", response_model=ClientResponse)
 def create_client(payload: CreateClientRequest) -> ClientResponse:
     client_id = str(uuid4())
-    provider_ref, config = provider.create_client(client_id=client_id, remark=payload.remark)
+    try:
+        provider_ref, config = provider.create_client(client_id=client_id, remark=payload.remark)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     expires_at = datetime.now(tz=timezone.utc) + timedelta(days=payload.plan_days)
 
     record = {
@@ -276,7 +317,12 @@ def revoke_client(client_id: str) -> ClientResponse:
     if not record["active"]:
         return _build_response(record)
 
-    provider.revoke_client(record["provider_ref"])
+    try:
+        provider.revoke_client(record["provider_ref"])
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     record["revoked_at"] = datetime.now(tz=timezone.utc)
     record["active"] = False
     return _build_response(record)
@@ -287,5 +333,10 @@ def get_client_config(client_id: str) -> ClientResponse:
     record = clients.get(client_id)
     if not record:
         raise HTTPException(status_code=404, detail="Client not found")
-    record["config"] = provider.get_config(record["provider_ref"])
+    try:
+        record["config"] = provider.get_config(record["provider_ref"])
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     return _build_response(record)
