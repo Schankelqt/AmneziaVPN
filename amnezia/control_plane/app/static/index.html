@@ -1,122 +1,132 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>HorizonNetVPN Control Plane</title>
+    <title>HorizonNetVPN — панель управления</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <main class="container">
-      <h1>HorizonNetVPN Control Plane</h1>
-      <p class="muted">
-        Fast admin UI for create/renew/revoke/config. If <code>ADMIN_AUTH_*</code> is set on the server, the
-        browser asks for login once (HTTP Basic).
-      </p>
-
-      <section class="card">
-        <h2>Server</h2>
+      <header class="site-header">
+        <h1>HorizonNetVPN</h1>
         <p class="muted">
-          Schedules a reboot in 1 minute (<code>shutdown -r +1</code>). Use the same login and password
-          as for this admin site; no extra token.
+          Панель управления: создание и продление клиентов, отзыв доступа, конфигурация. При заданных на сервере
+          <code>ADMIN_AUTH_USER</code> / <code>ADMIN_AUTH_PASSWORD</code> браузер запросит логин (HTTP Basic).
         </p>
-        <div class="actions">
-          <button id="reboot-btn" class="warn" type="button">Schedule server reboot (1 min)</button>
-        </div>
-      </section>
+      </header>
 
-      <section class="card">
-        <h2>Create client</h2>
-        <form id="create-form">
-          <label>
-            Telegram User ID
-            <input id="telegram_user_id" type="number" min="1" required />
-          </label>
-          <label>
-            Plan days
-            <input id="plan_days" type="number" min="1" value="30" required />
-          </label>
-          <label>
-            Remark
-            <input id="remark" type="text" placeholder="pilot-user" />
-          </label>
-          <button type="submit">Create</button>
-        </form>
-      </section>
+      <div class="layout">
+        <div class="row-cards two">
+          <section class="card compact">
+            <h2>Сервер</h2>
+            <p class="muted">
+              Перезагрузка через 1 минуту (<code>shutdown -r +1</code>). Те же логин и пароль, что для входа в эту
+              панель.
+            </p>
+            <div class="actions">
+              <button id="reboot-btn" class="warn" type="button">Перезагрузить сервер (через 1 мин)</button>
+            </div>
+          </section>
 
-      <section class="card">
-        <h2>Client actions</h2>
-        <div class="row">
-          <label>
-            Client ID
-            <input id="client_id" type="text" placeholder="uuid" />
-          </label>
-          <label>
-            Add days
-            <input id="add_days" type="number" min="1" value="30" />
-          </label>
+          <section class="card compact">
+            <h2>Новый клиент</h2>
+            <form id="create-form">
+              <label>
+                Telegram User ID
+                <input id="telegram_user_id" type="number" min="1" required />
+              </label>
+              <label>
+                Дней по тарифу
+                <input id="plan_days" type="number" min="1" value="30" required />
+              </label>
+              <label>
+                Заметка
+                <input id="remark" type="text" placeholder="например pilot-user" />
+              </label>
+              <button type="submit">Создать</button>
+            </form>
+          </section>
         </div>
-        <div class="actions">
-          <button id="renew-btn">Renew</button>
-          <button id="revoke-btn" class="warn">Revoke</button>
-          <button id="config-btn">Get Config</button>
-          <button id="refresh-btn">Refresh List</button>
-        </div>
-      </section>
 
-      <section class="card">
-        <h2>Response</h2>
-        <pre id="response-box">No actions yet.</pre>
-      </section>
+        <section class="card compact">
+          <h2>Действия с клиентом</h2>
+          <div class="row">
+            <label>
+              ID клиента
+              <input id="client_id" type="text" placeholder="uuid" />
+            </label>
+            <label>
+              Добавить дней
+              <input id="add_days" type="number" min="1" value="30" />
+            </label>
+          </div>
+          <div class="actions">
+            <button id="renew-btn" type="button">Продлить</button>
+            <button id="revoke-btn" class="warn" type="button">Отозвать</button>
+            <button id="config-btn" type="button">Получить конфиг</button>
+            <button id="refresh-btn" type="button">Обновить списки</button>
+          </div>
+        </section>
 
-      <section class="card">
-        <h2>Clients</h2>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Client ID</th>
-                <th>Telegram ID</th>
-                <th>Active</th>
-                <th>Expires (UTC)</th>
-              </tr>
-            </thead>
-            <tbody id="clients-body"></tbody>
-          </table>
-        </div>
-      </section>
+        <section class="card compact">
+          <h2>Ответ API</h2>
+          <pre id="response-box">Действий пока не было.</pre>
+        </section>
 
-      <section class="card">
-        <h2>Traffic stats (protocol + per-user)</h2>
-        <div class="stats-grid">
-          <div class="metric">
-            <span class="metric-label">Protocol</span>
-            <strong id="metric-protocol">-</strong>
+        <section class="card compact">
+          <h2>Клиенты</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID клиента</th>
+                  <th>Telegram</th>
+                  <th>Активен</th>
+                  <th>Истекает (UTC)</th>
+                </tr>
+              </thead>
+              <tbody id="clients-body"></tbody>
+            </table>
           </div>
-          <div class="metric">
-            <span class="metric-label">Total Inbound (RX)</span>
-            <strong id="metric-rx">0 B</strong>
+        </section>
+
+        <section class="card compact">
+          <h2>Статистика трафика</h2>
+          <div class="stats-grid">
+            <div class="metric">
+              <span class="metric-label">Протокол</span>
+              <strong id="metric-protocol">—</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Входящий (RX)</span>
+              <strong id="metric-rx">0 Б</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Исходящий (TX)</span>
+              <strong id="metric-tx">0 Б</strong>
+            </div>
+            <div class="metric">
+              <span class="metric-label">Всего</span>
+              <strong id="metric-total">0 Б</strong>
+            </div>
           </div>
-          <div class="metric">
-            <span class="metric-label">Total Outbound (TX)</span>
-            <strong id="metric-tx">0 B</strong>
+          <div class="charts-grid">
+            <div class="chart-panel">
+              <h3>Трафик за 24 ч</h3>
+              <div class="chart-wrap">
+                <canvas id="traffic-line-chart"></canvas>
+              </div>
+            </div>
+            <div class="chart-panel">
+              <h3>Топ по трафику</h3>
+              <div class="chart-wrap">
+                <canvas id="traffic-user-chart"></canvas>
+              </div>
+            </div>
           </div>
-          <div class="metric">
-            <span class="metric-label">Total Traffic</span>
-            <strong id="metric-total">0 B</strong>
-          </div>
-        </div>
-        <div class="charts-grid">
-          <div>
-            <h3>Total traffic growth (24h)</h3>
-            <canvas id="traffic-line-chart"></canvas>
-          </div>
-          <div>
-            <h3>Top users by traffic</h3>
-            <canvas id="traffic-user-chart"></canvas>
-          </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/static/app.js"></script>

@@ -18,7 +18,7 @@ def _clear_admin_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_frontend_and_health() -> None:
     root_resp = client.get("/")
     assert root_resp.status_code == 200
-    assert "HorizonNetVPN Control Plane" in root_resp.text
+    assert "HorizonNetVPN" in root_resp.text
 
     health_resp = client.get("/health")
     assert health_resp.status_code == 200

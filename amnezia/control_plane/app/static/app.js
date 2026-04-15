@@ -11,6 +11,12 @@ const metricTotal = document.getElementById("metric-total");
 let lineChart = null;
 let userChart = null;
 
+const chartDefaults = {
+  responsive: true,
+  maintainAspectRatio: false,
+  layout: { padding: { top: 4, right: 4, bottom: 0, left: 4 } },
+};
+
 function setResponse(data) {
   responseBox.textContent = JSON.stringify(data, null, 2);
 }
@@ -30,7 +36,7 @@ async function api(path, options = {}) {
   try {
     payload = await response.json();
   } catch {
-    payload = { message: "No JSON response" };
+    payload = { message: "Ответ не JSON" };
   }
 
   if (!response.ok) {
@@ -41,9 +47,9 @@ async function api(path, options = {}) {
 
 function formatBytes(bytes) {
   if (!bytes) {
-    return "0 B";
+    return "0 Б";
   }
-  const units = ["B", "KB", "MB", "GB", "TB"];
+  const units = ["Б", "КБ", "МБ", "ГБ", "ТБ"];
   let size = Number(bytes);
   let unitIndex = 0;
   while (size >= 1024 && unitIndex < units.length - 1) {
@@ -68,62 +74,96 @@ function renderCharts(stats) {
     userChart.destroy();
   }
 
-  lineChart = new Chart(document.getElementById("traffic-line-chart"), {
+  const lineCtx = document.getElementById("traffic-line-chart");
+  const barCtx = document.getElementById("traffic-user-chart");
+
+  lineChart = new Chart(lineCtx, {
     type: "line",
     data: {
       labels,
       datasets: [
         {
-          label: "Inbound RX",
+          label: "Входящий RX",
           data: rxData,
           borderColor: "#22c55e",
-          backgroundColor: "rgba(34,197,94,0.25)",
+          backgroundColor: "rgba(34,197,94,0.2)",
+          fill: true,
+          tension: 0.25,
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 3,
         },
         {
-          label: "Outbound TX",
+          label: "Исходящий TX",
           data: txData,
           borderColor: "#60a5fa",
-          backgroundColor: "rgba(96,165,250,0.25)",
+          backgroundColor: "rgba(96,165,250,0.15)",
+          fill: true,
+          tension: 0.25,
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 3,
         },
       ],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      ...chartDefaults,
+      interaction: { intersect: false, mode: "index" },
       scales: {
+        x: {
+          grid: { color: "rgba(148,163,184,0.12)" },
+          ticks: { color: "#94a3b8", maxRotation: 0, font: { size: 10 } },
+        },
         y: {
+          grid: { color: "rgba(148,163,184,0.12)" },
           ticks: {
+            color: "#94a3b8",
+            font: { size: 10 },
             callback: (value) => formatBytes(value),
           },
         },
       },
-      plugins: { legend: { labels: { color: "#e2e8f0" } } },
+      plugins: {
+        legend: {
+          labels: { color: "#e2e8f0", boxWidth: 12, font: { size: 11 } },
+        },
+      },
     },
   });
 
-  userChart = new Chart(document.getElementById("traffic-user-chart"), {
+  userChart = new Chart(barCtx, {
     type: "bar",
     data: {
       labels: userLabels,
       datasets: [
         {
-          label: "User traffic",
+          label: "Трафик",
           data: userTotals,
-          backgroundColor: "#3b82f6",
+          backgroundColor: "rgba(59,130,246,0.75)",
+          borderRadius: 4,
+          borderSkipped: false,
         },
       ],
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      ...chartDefaults,
       scales: {
+        x: {
+          grid: { display: false },
+          ticks: { color: "#94a3b8", font: { size: 10 } },
+        },
         y: {
+          grid: { color: "rgba(148,163,184,0.12)" },
           ticks: {
+            color: "#94a3b8",
+            font: { size: 10 },
             callback: (value) => formatBytes(value),
           },
         },
       },
-      plugins: { legend: { labels: { color: "#e2e8f0" } } },
+      plugins: {
+        legend: { display: false },
+      },
     },
   });
 }
@@ -150,7 +190,7 @@ async function refreshList() {
       row.innerHTML = `
         <td>${c.client_id}</td>
         <td>${c.telegram_user_id}</td>
-        <td>${c.active ? "yes" : "no"}</td>
+        <td>${c.active ? "да" : "нет"}</td>
         <td>${c.expires_at}</td>
       `;
       row.addEventListener("click", () => {
@@ -187,7 +227,7 @@ document.getElementById("create-form").addEventListener("submit", async (event) 
 document.getElementById("renew-btn").addEventListener("click", async () => {
   const clientId = clientIdInput.value.trim();
   if (!clientId) {
-    setResponse({ error: "client_id required" });
+    setResponse({ error: "Укажите ID клиента" });
     return;
   }
   try {
@@ -206,7 +246,7 @@ document.getElementById("renew-btn").addEventListener("click", async () => {
 document.getElementById("revoke-btn").addEventListener("click", async () => {
   const clientId = clientIdInput.value.trim();
   if (!clientId) {
-    setResponse({ error: "client_id required" });
+    setResponse({ error: "Укажите ID клиента" });
     return;
   }
   try {
@@ -222,7 +262,7 @@ document.getElementById("revoke-btn").addEventListener("click", async () => {
 document.getElementById("config-btn").addEventListener("click", async () => {
   const clientId = clientIdInput.value.trim();
   if (!clientId) {
-    setResponse({ error: "client_id required" });
+    setResponse({ error: "Укажите ID клиента" });
     return;
   }
   try {
@@ -240,7 +280,7 @@ document.getElementById("refresh-btn").addEventListener("click", async () => {
 
 document.getElementById("reboot-btn").addEventListener("click", async () => {
   const ok = window.confirm(
-    "Schedule a full server reboot in 1 minute? SSH and VPN will drop until the host is back."
+    "Запланировать полную перезагрузку сервера через 1 минуту? SSH и VPN будут недоступны, пока машина не поднимется."
   );
   if (!ok) {
     return;

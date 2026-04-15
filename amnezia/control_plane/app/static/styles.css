@@ -1,12 +1,19 @@
 :root {
   color-scheme: dark;
-  --bg: #0f172a;
-  --card: #1e293b;
-  --text: #e2e8f0;
+  --bg: #0c1222;
+  --bg-elevated: #111827;
+  --card: #151d2e;
+  --card-hover: #1a2438;
+  --text: #f1f5f9;
   --muted: #94a3b8;
-  --accent: #3b82f6;
-  --danger: #dc2626;
-  --border: #334155;
+  --accent: #2563eb;
+  --accent-hover: #3b82f6;
+  --danger: #b91c1c;
+  --danger-hover: #dc2626;
+  --border: #2d3a52;
+  --glow: rgba(37, 99, 235, 0.15);
+  --radius: 10px;
+  --shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
 }
 
 * {
@@ -15,65 +22,137 @@
 
 body {
   margin: 0;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family:
+    "Inter",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    system-ui,
+    sans-serif;
   background: var(--bg);
+  background-image: radial-gradient(ellipse 120% 80% at 50% -20%, var(--glow), transparent);
   color: var(--text);
+  font-size: 14px;
+  line-height: 1.45;
+  min-height: 100vh;
 }
 
 .container {
-  max-width: 980px;
-  margin: 24px auto;
-  padding: 0 16px 24px;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 20px 16px 32px;
 }
 
-h1 {
-  margin: 0 0 8px;
+.site-header {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
 }
 
-h2 {
-  margin: 0 0 12px;
-  font-size: 18px;
+.site-header h1 {
+  margin: 0 0 6px;
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
 }
 
-h3 {
-  margin: 0 0 10px;
-  font-size: 15px;
-  color: var(--muted);
+.site-header .muted {
+  margin: 0;
+  font-size: 13px;
+  max-width: 52ch;
 }
 
 .muted {
   color: var(--muted);
-  margin-bottom: 16px;
+}
+
+.muted code {
+  font-size: 12px;
+  background: var(--bg-elevated);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.layout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.row-cards {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 720px) {
+  .row-cards.two {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
 }
 
 .card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 16px;
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+
+.card.compact {
+  padding: 12px 14px;
+}
+
+.card h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.card h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.card .muted {
+  margin-bottom: 10px;
+  font-size: 13px;
 }
 
 form,
 .row {
   display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
 label {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  font-size: 14px;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
 }
 
 input {
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 10px;
-  background: #0b1220;
+  padding: 8px 10px;
+  background: var(--bg-elevated);
   color: var(--text);
+  font-size: 14px;
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
 }
 
 button {
@@ -81,87 +160,150 @@ button {
   border-radius: 8px;
   background: var(--accent);
   color: white;
-  padding: 10px 14px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+button:hover {
+  background: var(--accent-hover);
+}
+
+button:active {
+  transform: translateY(1px);
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 12px;
+  margin-top: 4px;
 }
 
 button.warn {
   background: var(--danger);
 }
 
+button.warn:hover {
+  background: var(--danger-hover);
+}
+
 pre {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  background: #0b1220;
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 12px;
-  max-height: 380px;
+  padding: 10px 12px;
+  max-height: 200px;
   overflow: auto;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .table-wrap {
   overflow-x: auto;
+  max-height: 240px;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: 1px solid var(--border);
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
+  font-size: 13px;
 }
 
 th,
 td {
   text-align: left;
   border-bottom: 1px solid var(--border);
-  padding: 8px;
-  font-size: 14px;
+  padding: 8px 10px;
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--card);
+  z-index: 1;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 tbody tr:hover {
-  background: #1a2438;
+  background: var(--card-hover);
   cursor: pointer;
 }
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
   margin-bottom: 12px;
+}
+
+@media (min-width: 560px) {
+  .stats-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 
 .metric {
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 10px;
-  background: #0b1220;
+  padding: 8px 10px;
+  background: var(--bg-elevated);
 }
 
 .metric-label {
   display: block;
   color: var(--muted);
-  font-size: 12px;
-  margin-bottom: 6px;
+  font-size: 11px;
+  margin-bottom: 4px;
+  line-height: 1.2;
+}
+
+.metric strong {
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .charts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 
-canvas {
+@media (min-width: 640px) {
+  .charts-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.chart-panel {
+  min-width: 0;
+}
+
+/* Фиксированная высота — иначе Chart.js с maintainAspectRatio:false растягивает страницу */
+.chart-wrap {
+  position: relative;
   width: 100%;
-  min-height: 220px;
-  background: #0b1220;
+  height: 200px;
+  max-height: 200px;
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 8px;
+  padding: 4px;
+}
+
+.chart-wrap canvas {
+  display: block;
+  max-width: 100%;
 }
