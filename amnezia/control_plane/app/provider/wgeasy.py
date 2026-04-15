@@ -104,3 +104,33 @@ class WgEasyProvider(VpnProvider):
                 f"wg-easy get_qr_svg unexpected status {response.status_code}: {response.text[:500]}"
             )
         return response.text
+
+    def get_traffic_snapshot(self) -> dict[str, dict[str, int]]:
+        """
+        Returns per-client traffic by provider reference.
+        Keys are best-effort normalized to match stored provider_ref in control_plane.
+        """
+        response = self._request("GET", "/api/client", expected_status={200})
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise RuntimeError(f"wg-easy get_traffic_snapshot unexpected payload: {payload}")
+
+        result: dict[str, dict[str, int]] = {}
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            client_id = item.get("clientId")
+            numeric_id = item.get("id")
+            ref_candidates = []
+            if client_id is not None:
+                ref_candidates.append(str(client_id))
+            if numeric_id is not None:
+                ref_candidates.append(str(numeric_id))
+            if not ref_candidates:
+                continue
+
+            rx = int(item.get("transferRx") or 0)
+            tx = int(item.get("transferTx") or 0)
+            for ref in ref_candidates:
+                result[ref] = {"rx_bytes": rx, "tx_bytes": tx, "total_bytes": rx + tx}
+        return result

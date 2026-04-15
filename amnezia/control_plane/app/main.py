@@ -2,6 +2,7 @@ import base64
 import os
 import secrets
 import subprocess
+from collections import deque
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -64,6 +65,7 @@ def _build_provider() -> tuple[str, VpnProvider]:
 
 
 provider_kind, provider = _build_provider()
+traffic_history: deque[dict[str, int | str]] = deque(maxlen=24 * 12)
 
 _http_basic = HTTPBasic(auto_error=False)
 
@@ -153,6 +155,44 @@ def _traffic_until(record: dict, at_time: datetime) -> tuple[int, int]:
     return seconds * rx_rate, seconds * tx_rate
 
 
+def _build_wgeasy_series(now: datetime, total_rx: int, total_tx: int) -> list[dict[str, int | str]]:
+    # Keep lightweight in-memory history; after restart we start filling it again.
+    traffic_history.append(
+        {
+            "ts": now.isoformat(),
+            "rx_bytes": total_rx,
+            "tx_bytes": total_tx,
+            "total_bytes": total_rx + total_tx,
+        }
+    )
+    points = list(traffic_history)
+    series = []
+    for offset in range(23, -1, -1):
+        point_time = now - timedelta(hours=offset)
+        chosen = None
+        for point in points:
+            point_ts = datetime.fromisoformat(str(point["ts"]))
+            if point_ts <= point_time:
+                chosen = point
+            else:
+                break
+        if chosen is None:
+            chosen = {
+                "rx_bytes": 0,
+                "tx_bytes": 0,
+                "total_bytes": 0,
+            }
+        series.append(
+            {
+                "ts": point_time.isoformat(),
+                "rx_bytes": int(chosen["rx_bytes"]),
+                "tx_bytes": int(chosen["tx_bytes"]),
+                "total_bytes": int(chosen["total_bytes"]),
+            }
+        )
+    return series
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -221,6 +261,49 @@ def list_clients() -> list[ClientResponse]:
 def traffic_stats() -> dict:
     now = datetime.now(tz=timezone.utc)
     protocol = "wireguard-wgeasy" if provider_kind == "wgeasy" else "amneziawg-mock"
+
+    if provider_kind == "wgeasy":
+        if not isinstance(provider, WgEasyProvider):
+            raise HTTPException(status_code=500, detail="Provider mismatch for wgeasy stats")
+        try:
+            snapshot = provider.get_traffic_snapshot()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+        per_user = []
+        total_rx = 0
+        total_tx = 0
+        for item in clients.values():
+            traffic = snapshot.get(item["provider_ref"]) or snapshot.get(str(item["provider_ref"])) or {}
+            rx_bytes = int(traffic.get("rx_bytes") or 0)
+            tx_bytes = int(traffic.get("tx_bytes") or 0)
+            total_rx += rx_bytes
+            total_tx += tx_bytes
+            per_user.append(
+                {
+                    "client_id": item["client_id"],
+                    "telegram_user_id": item["telegram_user_id"],
+                    "active": item["active"],
+                    "expires_at": item["expires_at"],
+                    "rx_bytes": rx_bytes,
+                    "tx_bytes": tx_bytes,
+                    "total_bytes": rx_bytes + tx_bytes,
+                }
+            )
+
+        per_user.sort(key=lambda user: user["total_bytes"], reverse=True)
+        series = _build_wgeasy_series(now, total_rx, total_tx)
+        return {
+            "protocol": protocol,
+            "updated_at": now.isoformat(),
+            "totals": {
+                "rx_bytes": total_rx,
+                "tx_bytes": total_tx,
+                "total_bytes": total_rx + total_tx,
+            },
+            "per_user": per_user,
+            "series_24h": series,
+        }
 
     per_user = []
     total_rx = 0
