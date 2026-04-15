@@ -7,8 +7,8 @@ services:
     container_name: wg-easy
     restart: unless-stopped
     environment:
-      WG_HOST: ${WG_HOST}
-      PASSWORD: ${WG_EASY_PASSWORD}
+    WG_HOST: ${WG_HOST}
+    PASSWORD_HASH: ${WG_EASY_PASSWORD_HASH}
     volumes:
       - wg_easy_data:/etc/wireguard
       - /lib/modules:/lib/modules:ro
