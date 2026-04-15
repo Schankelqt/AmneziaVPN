@@ -15,6 +15,7 @@ client = TestClient(app)
 def _clear_admin_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ADMIN_AUTH_USER", raising=False)
     monkeypatch.delenv("ADMIN_AUTH_PASSWORD", raising=False)
+    monkeypatch.delenv("BOT_API_TOKEN", raising=False)
     db = SessionLocal()
     try:
         db.query(ClientRecord).delete()
@@ -31,6 +32,10 @@ def test_frontend_and_health() -> None:
     health_resp = client.get("/health")
     assert health_resp.status_code == 200
     assert health_resp.json()["status"] == "ok"
+
+    db_health_resp = client.get("/v1/db/health")
+    assert db_health_resp.status_code == 200
+    assert db_health_resp.json()["status"] == "ok"
 
     stats_resp = client.get("/v1/stats/traffic")
     assert stats_resp.status_code == 200
@@ -108,6 +113,59 @@ def test_admin_reboot_unauthorized(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ADMIN_AUTH_PASSWORD", "correct")
     resp = client.post("/v1/admin/reboot", auth=("admin", "wrong"))
     assert resp.status_code == 401
+
+
+def test_bot_endpoints_require_bearer(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BOT_API_TOKEN", "bot-secret")
+    no_auth = client.get("/v1/bot/users/123/active-access")
+    assert no_auth.status_code == 401
+    wrong_auth = client.get(
+        "/v1/bot/users/123/active-access",
+        headers={"Authorization": "Bearer wrong"},
+    )
+    assert wrong_auth.status_code == 401
+
+
+def test_bot_wireguard_lifecycle(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BOT_API_TOKEN", "bot-secret")
+    headers = {"Authorization": "Bearer bot-secret"}
+
+    provision_resp = client.post(
+        "/v1/bot/users/555/provision",
+        headers=headers,
+        json={"plan_days": 30, "remark": "tg-bot", "recreate_if_exists": False},
+    )
+    assert provision_resp.status_code == 200
+    provisioned = provision_resp.json()
+    assert provisioned["telegram_user_id"] == 555
+    client_id = provisioned["client_id"]
+
+    get_active_resp = client.get("/v1/bot/users/555/active-access", headers=headers)
+    assert get_active_resp.status_code == 200
+    assert get_active_resp.json()["client_id"] == client_id
+
+    provision_again_resp = client.post(
+        "/v1/bot/users/555/provision",
+        headers=headers,
+        json={"plan_days": 30, "remark": "tg-bot", "recreate_if_exists": False},
+    )
+    assert provision_again_resp.status_code == 200
+    assert provision_again_resp.json()["client_id"] == client_id
+
+    renew_resp = client.post("/v1/bot/users/555/renew", headers=headers, json={"add_days": 3})
+    assert renew_resp.status_code == 200
+    assert renew_resp.json()["client_id"] == client_id
+
+    qr_resp = client.get("/v1/bot/users/555/qrcode.svg", headers=headers)
+    assert qr_resp.status_code == 200
+    assert "svg" in qr_resp.text.lower()
+
+    revoke_resp = client.post("/v1/bot/users/555/revoke", headers=headers)
+    assert revoke_resp.status_code == 200
+    assert revoke_resp.json()["active"] is False
+
+    missing_active_resp = client.get("/v1/bot/users/555/active-access", headers=headers)
+    assert missing_active_resp.status_code == 404
 
 
 @patch("app.main.subprocess.run")

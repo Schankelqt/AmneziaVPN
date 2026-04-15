@@ -12,6 +12,16 @@ class RenewClientRequest(BaseModel):
     add_days: int = Field(default=30, ge=1, le=3650)
 
 
+class BotProvisionRequest(BaseModel):
+    plan_days: int = Field(default=30, ge=1, le=3650)
+    remark: str = Field(default="")
+    recreate_if_exists: bool = Field(default=False)
+
+
+class BotRenewRequest(BaseModel):
+    add_days: int = Field(default=30, ge=1, le=3650)
+
+
 class ClientResponse(BaseModel):
     client_id: str
     telegram_user_id: int

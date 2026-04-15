@@ -105,6 +105,7 @@ Fill real values in `/opt/horizonnetvpn/app/amnezia/.env.prod`:
 
 - `POSTGRES_PASSWORD`
 - `ADMIN_AUTH_PASSWORD`
+- `BOT_API_TOKEN` (for Telegram bot -> control-plane API)
 - `WG_EASY_PASSWORD`
 - `WG_EASY_INIT_PASSWORD`
 - `WG_EASY_INIT_HOST` (your public server IP or DNS)

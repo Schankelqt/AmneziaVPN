@@ -11,6 +11,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 from starlette.requests import Request
 from starlette.responses import Response
 from sqlalchemy.orm import Session
@@ -21,6 +22,8 @@ from .provider.base import VpnProvider
 from .provider.mock import MockProvider
 from .provider.wgeasy import WgEasyConfig, WgEasyProvider
 from .schemas import (
+    BotProvisionRequest,
+    BotRenewRequest,
     ClientResponse,
     CreateClientRequest,
     RenewClientRequest,
@@ -120,6 +123,8 @@ async def enforce_admin_site_auth(request: Request, call_next):
         return await call_next(request)
     if request.url.path == "/health":
         return await call_next(request)
+    if request.url.path.startswith("/v1/bot/"):
+        return await call_next(request)
     if not _authorization_header_allows_access(request.headers.get("Authorization")):
         return Response(
             status_code=401,
@@ -137,6 +142,44 @@ def _build_response(client: ClientRecord) -> ClientResponse:
         config=client.config,
         provider_ref=client.provider_ref,
     )
+
+
+def _active_client_for_telegram_user(db: Session, telegram_user_id: int) -> ClientRecord | None:
+    return (
+        db.query(ClientRecord)
+        .filter(
+            ClientRecord.telegram_user_id == telegram_user_id,
+            ClientRecord.active.is_(True),
+        )
+        .order_by(ClientRecord.expires_at.desc(), ClientRecord.created_at.desc())
+        .first()
+    )
+
+
+def _create_client_record(
+    db: Session, telegram_user_id: int, plan_days: int, remark: str
+) -> ClientRecord:
+    client_id = str(uuid4())
+    try:
+        provider_ref, config = provider.create_client(client_id=client_id, remark=remark)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    expires_at = datetime.now(tz=timezone.utc) + timedelta(days=plan_days)
+
+    record = ClientRecord(
+        client_id=client_id,
+        telegram_user_id=telegram_user_id,
+        provider_ref=provider_ref,
+        config=config,
+        expires_at=expires_at,
+        created_at=datetime.now(tz=timezone.utc),
+        revoked_at=None,
+        active=True,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
 
 
 def _rate_for_client(record: ClientRecord) -> tuple[int, int]:
@@ -204,6 +247,15 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/v1/db/health")
+def db_health(db: Session = Depends(get_db)) -> dict[str, str]:
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"database is unavailable: {exc}") from exc
+    return {"status": "ok"}
+
+
 def require_admin_basic(
     credentials: HTTPBasicCredentials | None = Depends(_http_basic),
 ) -> None:
@@ -225,6 +277,25 @@ def require_admin_basic(
             detail="Invalid credentials",
             headers={"WWW-Authenticate": "Basic"},
         )
+
+
+def _bot_api_token() -> str:
+    return os.environ.get("BOT_API_TOKEN", "").strip()
+
+
+def require_bot_token(request: Request) -> None:
+    expected_token = _bot_api_token()
+    if not expected_token:
+        raise HTTPException(
+            status_code=503,
+            detail="Bot API is disabled. Set BOT_API_TOKEN.",
+        )
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Bearer token required")
+    token = auth_header[7:].strip()
+    if not token or not secrets.compare_digest(token, expected_token):
+        raise HTTPException(status_code=401, detail="Invalid bot token")
 
 
 @app.post("/v1/admin/reboot")
@@ -366,26 +437,12 @@ def traffic_stats(db: Session = Depends(get_db)) -> dict:
 
 @app.post("/v1/clients", response_model=ClientResponse)
 def create_client(payload: CreateClientRequest, db: Session = Depends(get_db)) -> ClientResponse:
-    client_id = str(uuid4())
-    try:
-        provider_ref, config = provider.create_client(client_id=client_id, remark=payload.remark)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    expires_at = datetime.now(tz=timezone.utc) + timedelta(days=payload.plan_days)
-
-    record = ClientRecord(
-        client_id=client_id,
+    record = _create_client_record(
+        db=db,
         telegram_user_id=payload.telegram_user_id,
-        provider_ref=provider_ref,
-        config=config,
-        expires_at=expires_at,
-        created_at=datetime.now(tz=timezone.utc),
-        revoked_at=None,
-        active=True,
+        plan_days=payload.plan_days,
+        remark=payload.remark,
     )
-    db.add(record)
-    db.commit()
-    db.refresh(record)
     return _build_response(record)
 
 
@@ -447,6 +504,103 @@ def get_client_qr_svg(client_id: str, db: Session = Depends(get_db)) -> Response
     record = db.get(ClientRecord, client_id)
     if not record:
         raise HTTPException(status_code=404, detail="Client not found")
+    try:
+        qr_svg = provider.get_qr_svg(record.provider_ref)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return Response(content=qr_svg, media_type="image/svg+xml")
+
+
+@app.get("/v1/bot/users/{telegram_user_id}/active-access", response_model=ClientResponse)
+def bot_get_active_access(
+    telegram_user_id: int,
+    _auth: None = Depends(require_bot_token),
+    db: Session = Depends(get_db),
+) -> ClientResponse:
+    record = _active_client_for_telegram_user(db, telegram_user_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Active client not found")
+    return _build_response(record)
+
+
+@app.post("/v1/bot/users/{telegram_user_id}/provision", response_model=ClientResponse)
+def bot_provision_access(
+    telegram_user_id: int,
+    payload: BotProvisionRequest,
+    _auth: None = Depends(require_bot_token),
+    db: Session = Depends(get_db),
+) -> ClientResponse:
+    active = _active_client_for_telegram_user(db, telegram_user_id)
+    if active and not payload.recreate_if_exists:
+        return _build_response(active)
+    if active and payload.recreate_if_exists:
+        try:
+            provider.revoke_client(active.provider_ref)
+        except KeyError:
+            pass
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        active.revoked_at = datetime.now(tz=timezone.utc)
+        active.active = False
+        db.commit()
+    record = _create_client_record(
+        db=db,
+        telegram_user_id=telegram_user_id,
+        plan_days=payload.plan_days,
+        remark=payload.remark,
+    )
+    return _build_response(record)
+
+
+@app.post("/v1/bot/users/{telegram_user_id}/renew", response_model=ClientResponse)
+def bot_renew_active_access(
+    telegram_user_id: int,
+    payload: BotRenewRequest,
+    _auth: None = Depends(require_bot_token),
+    db: Session = Depends(get_db),
+) -> ClientResponse:
+    record = _active_client_for_telegram_user(db, telegram_user_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Active client not found")
+    record.expires_at = record.expires_at + timedelta(days=payload.add_days)
+    db.commit()
+    db.refresh(record)
+    return _build_response(record)
+
+
+@app.post("/v1/bot/users/{telegram_user_id}/revoke", response_model=ClientResponse)
+def bot_revoke_active_access(
+    telegram_user_id: int,
+    _auth: None = Depends(require_bot_token),
+    db: Session = Depends(get_db),
+) -> ClientResponse:
+    record = _active_client_for_telegram_user(db, telegram_user_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Active client not found")
+    try:
+        provider.revoke_client(record.provider_ref)
+    except KeyError:
+        pass
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    record.revoked_at = datetime.now(tz=timezone.utc)
+    record.active = False
+    db.commit()
+    db.refresh(record)
+    return _build_response(record)
+
+
+@app.get("/v1/bot/users/{telegram_user_id}/qrcode.svg")
+def bot_get_active_qr_svg(
+    telegram_user_id: int,
+    _auth: None = Depends(require_bot_token),
+    db: Session = Depends(get_db),
+) -> Response:
+    record = _active_client_for_telegram_user(db, telegram_user_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Active client not found")
     try:
         qr_svg = provider.get_qr_svg(record.provider_ref)
     except KeyError as exc:
