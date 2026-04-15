@@ -11,6 +11,7 @@ services:
       # Inside Docker network, Postgres is reachable by service name.
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       WG_EASY_BASE_URL: http://wg-easy:${WG_EASY_UI_PORT:-51821}
+      TZ: Europe/Moscow
     depends_on:
       postgres:
         condition: service_healthy
@@ -27,6 +28,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: Europe/Moscow
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -46,6 +48,7 @@ services:
       HOST: ${WG_EASY_UI_HOST}
       PORT: ${WG_EASY_UI_PORT}
       WG_PORT: ${WG_EASY_WG_PORT}
+      TZ: Europe/Moscow
       INIT_ENABLED: ${WG_EASY_INIT_ENABLED}
       INIT_USERNAME: ${WG_EASY_INIT_USERNAME}
       INIT_PASSWORD: ${WG_EASY_INIT_PASSWORD}

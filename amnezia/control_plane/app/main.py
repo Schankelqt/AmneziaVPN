@@ -6,6 +6,7 @@ from collections import deque
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -71,6 +72,7 @@ def _build_provider() -> tuple[str, VpnProvider]:
 
 provider_kind, provider = _build_provider()
 traffic_history: deque[dict[str, int | str]] = deque(maxlen=50000)
+MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
 _http_basic = HTTPBasic(auto_error=False)
 
@@ -139,10 +141,22 @@ def _build_response(client: ClientRecord) -> ClientResponse:
         telegram_user_id=client.telegram_user_id,
         user_name=client.user_name,
         active=client.active,
-        expires_at=client.expires_at,
+        expires_at=_to_moscow(client.expires_at),
         config=client.config,
         provider_ref=client.provider_ref,
     )
+
+
+def _now_moscow() -> datetime:
+    return datetime.now(tz=MOSCOW_TZ)
+
+
+def _to_moscow(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(MOSCOW_TZ)
 
 
 def _active_client_for_telegram_user(db: Session, telegram_user_id: int) -> ClientRecord | None:
@@ -165,7 +179,7 @@ def _create_client_record(
         provider_ref, config = provider.create_client(client_id=client_id, remark=remark)
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    expires_at = datetime.now(tz=timezone.utc) + timedelta(days=plan_days)
+    expires_at = _now_moscow() + timedelta(days=plan_days)
 
     record = ClientRecord(
         client_id=client_id,
@@ -174,7 +188,7 @@ def _create_client_record(
         provider_ref=provider_ref,
         config=config,
         expires_at=expires_at,
-        created_at=datetime.now(tz=timezone.utc),
+        created_at=_now_moscow(),
         revoked_at=None,
         active=True,
     )
@@ -212,8 +226,8 @@ def _series_window(
         to_date = date.fromisoformat(date_to_raw) if date_to_raw else from_date
         if to_date < from_date:
             from_date, to_date = to_date, from_date
-        start = datetime.combine(from_date, time.min, tzinfo=timezone.utc)
-        end = datetime.combine(to_date, time.max, tzinfo=timezone.utc)
+        start = datetime.combine(from_date, time.min, tzinfo=MOSCOW_TZ)
+        end = datetime.combine(to_date, time.max, tzinfo=MOSCOW_TZ)
         span_days = (to_date - from_date).days + 1
         bucket = timedelta(hours=1) if span_days <= 2 else timedelta(days=1)
         return start, end, bucket
@@ -332,6 +346,17 @@ def db_health(db: Session = Depends(get_db)) -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/v1/time")
+def current_time() -> dict[str, str]:
+    now_moscow = _now_moscow()
+    now_utc = now_moscow.astimezone(timezone.utc)
+    return {
+        "timezone": "Europe/Moscow",
+        "backend_time_moscow": now_moscow.isoformat(),
+        "backend_time_utc": now_utc.isoformat(),
+    }
+
+
 @app.get("/v1/logs/traffic")
 def traffic_logs(limit: int = 100, db: Session = Depends(get_db)) -> dict:
     bounded_limit = max(1, min(limit, 500))
@@ -442,7 +467,7 @@ def traffic_stats(
     user_ids: str | None = None,
     db: Session = Depends(get_db),
 ) -> dict:
-    now = datetime.now(tz=timezone.utc)
+    now = _now_moscow()
     protocol = "wireguard-wgeasy" if provider_kind == "wgeasy" else "amneziawg-mock"
     records = db.query(ClientRecord).all()
     selected_user_ids = _parse_user_id_filter(user_ids)
@@ -508,7 +533,7 @@ def traffic_stats(
             record = record_map.get(uid)
             if record:
                 agg["active"] = record.active
-                agg["expires_at"] = record.expires_at
+                agg["expires_at"] = _to_moscow(record.expires_at)
                 agg["client_id"] = record.client_id
                 if not agg.get("user_name"):
                     agg["user_name"] = record.user_name
@@ -554,7 +579,7 @@ def traffic_stats(
                 "client_id": item.client_id,
                 "telegram_user_id": item.telegram_user_id,
                 "active": item.active,
-                "expires_at": item.expires_at,
+                "expires_at": _to_moscow(item.expires_at),
                 "rx_bytes": rx_bytes,
                 "tx_bytes": tx_bytes,
                 "total_bytes": rx_bytes + tx_bytes,
@@ -648,7 +673,7 @@ def revoke_client(client_id: str, db: Session = Depends(get_db)) -> ClientRespon
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    record.revoked_at = datetime.now(tz=timezone.utc)
+    record.revoked_at = _now_moscow()
     record.active = False
     db.commit()
     db.refresh(record)
@@ -718,7 +743,7 @@ def bot_provision_access(
             pass
         except RuntimeError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
-        active.revoked_at = datetime.now(tz=timezone.utc)
+        active.revoked_at = _now_moscow()
         active.active = False
         db.commit()
     record = _create_client_record(
@@ -762,7 +787,7 @@ def bot_revoke_active_access(
         pass
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    record.revoked_at = datetime.now(tz=timezone.utc)
+    record.revoked_at = _now_moscow()
     record.active = False
     db.commit()
     db.refresh(record)

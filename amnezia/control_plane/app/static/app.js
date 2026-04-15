@@ -8,6 +8,7 @@ const metricProtocol = document.getElementById("metric-protocol");
 const metricRx = document.getElementById("metric-rx");
 const metricTx = document.getElementById("metric-tx");
 const metricTotal = document.getElementById("metric-total");
+const backendTimeMoscow = document.getElementById("backend-time-moscow");
 const clientsFilterInput = document.getElementById("clients-filter");
 const clientsActiveFilter = document.getElementById("clients-active-filter");
 const trafficScaleInput = document.getElementById("traffic-scale");
@@ -73,10 +74,34 @@ function formatBytes(bytes) {
   return `${size.toFixed(size < 10 && unitIndex > 0 ? 2 : 1)} ${units[unitIndex]}`;
 }
 
+function formatDateTimeMoscow(value) {
+  if (!value) {
+    return "—";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+  return date.toLocaleString("ru-RU", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 function renderCharts(stats) {
   const labels = stats.series_24h.map((point) => {
-    const ts = String(point.ts);
-    return stats.scale === "day" ? ts.slice(11, 16) : ts.slice(5, 10);
+    const date = new Date(point.ts);
+    if (Number.isNaN(date.getTime())) {
+      return String(point.ts);
+    }
+    return stats.scale === "day"
+      ? date.toLocaleTimeString("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit" })
+      : date.toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow", day: "2-digit", month: "2-digit" });
   });
   const rxData = stats.series_24h.map((point) => point.rx_bytes);
   const txData = stats.series_24h.map((point) => point.tx_bytes);
@@ -199,10 +224,12 @@ async function refreshStats() {
       params.set("user_ids", trafficFilters.userIds.trim());
     }
     const stats = await api(`/v1/stats/traffic?${params.toString()}`);
+    const timeInfo = await api("/v1/time");
     metricProtocol.textContent = stats.protocol;
     metricRx.textContent = formatBytes(stats.totals.rx_bytes);
     metricTx.textContent = formatBytes(stats.totals.tx_bytes);
     metricTotal.textContent = formatBytes(stats.totals.total_bytes);
+    backendTimeMoscow.textContent = formatDateTimeMoscow(timeInfo.backend_time_moscow);
     renderCharts(stats);
   } catch (error) {
     setResponse({ error: String(error) });
@@ -237,7 +264,7 @@ function renderClientRows() {
       <td>${c.telegram_user_id}</td>
       <td>${c.user_name || "—"}</td>
       <td>${c.active ? "да" : "нет"}</td>
-      <td>${c.expires_at}</td>
+      <td>${formatDateTimeMoscow(c.expires_at)}</td>
     `;
     row.addEventListener("click", () => {
       clientIdInput.value = c.client_id;
