@@ -19,6 +19,7 @@ async function api(path, options = {}) {
   const { headers: optionHeaders, ...fetchRest } = options;
   const response = await fetch(path, {
     ...fetchRest,
+    credentials: fetchRest.credentials ?? "same-origin",
     headers: {
       "Content-Type": "application/json",
       ...(optionHeaders || {}),

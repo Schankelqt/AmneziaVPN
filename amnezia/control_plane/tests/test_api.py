@@ -9,6 +9,12 @@ from app.main import app
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _clear_admin_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ADMIN_AUTH_USER", raising=False)
+    monkeypatch.delenv("ADMIN_AUTH_PASSWORD", raising=False)
+
+
 def test_frontend_and_health() -> None:
     root_resp = client.get("/")
     assert root_resp.status_code == 200
@@ -24,6 +30,15 @@ def test_frontend_and_health() -> None:
     assert "totals" in stats
     assert "per_user" in stats
     assert "series_24h" in stats
+
+
+def test_site_requires_basic_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_AUTH_USER", "admin")
+    monkeypatch.setenv("ADMIN_AUTH_PASSWORD", "secret")
+    assert client.get("/").status_code == 401
+    ok = client.get("/", auth=("admin", "secret"))
+    assert ok.status_code == 200
+    assert client.get("/health").status_code == 200
 
 
 def test_client_lifecycle() -> None:

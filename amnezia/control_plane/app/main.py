@@ -1,3 +1,4 @@
+import base64
 import os
 import secrets
 import subprocess
@@ -9,6 +10,8 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
+from starlette.requests import Request
+from starlette.responses import Response
 
 from .provider.mock import MockProvider
 from .schemas import (
@@ -23,6 +26,64 @@ static_dir = Path(__file__).resolve().parent / "static"
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 clients: dict[str, dict] = {}
+
+_http_basic = HTTPBasic(auto_error=False)
+
+
+def _admin_basic_credentials() -> tuple[str, str]:
+    user = os.environ.get("ADMIN_AUTH_USER", "").strip()
+    password = os.environ.get("ADMIN_AUTH_PASSWORD", "").strip()
+    return user, password
+
+
+def _admin_basic_configured() -> bool:
+    user, password = _admin_basic_credentials()
+    return bool(user and password)
+
+
+def _credentials_tuple_valid(username: str, password: str) -> bool:
+    expected_user, expected_password = _admin_basic_credentials()
+    if not expected_user or not expected_password:
+        return False
+    return secrets.compare_digest(username, expected_user) and secrets.compare_digest(
+        password, expected_password
+    )
+
+
+def _parse_basic_authorization(header: str | None) -> tuple[str, str] | None:
+    if not header or not header.startswith("Basic "):
+        return None
+    try:
+        raw = base64.b64decode(header[6:].strip()).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return None
+    idx = raw.find(":")
+    if idx == -1:
+        return None
+    return raw[:idx], raw[idx + 1 :]
+
+
+def _authorization_header_allows_access(header: str | None) -> bool:
+    parsed = _parse_basic_authorization(header)
+    if not parsed:
+        return False
+    u, p = parsed
+    return _credentials_tuple_valid(u, p)
+
+
+@app.middleware("http")
+async def enforce_admin_site_auth(request: Request, call_next):
+    """When ADMIN_AUTH_* are set, require HTTP Basic for all routes except /health."""
+    if not _admin_basic_configured():
+        return await call_next(request)
+    if request.url.path == "/health":
+        return await call_next(request)
+    if not _authorization_header_allows_access(request.headers.get("Authorization")):
+        return Response(
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="HorizonNetVPN Admin"'},
+        )
+    return await call_next(request)
 
 
 def _build_response(client: dict) -> ClientResponse:
@@ -59,21 +120,11 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-_http_basic = HTTPBasic(auto_error=False)
-
-
-def _admin_basic_credentials() -> tuple[str, str]:
-    user = os.environ.get("ADMIN_AUTH_USER", "").strip()
-    password = os.environ.get("ADMIN_AUTH_PASSWORD", "").strip()
-    return user, password
-
-
 def require_admin_basic(
     credentials: HTTPBasicCredentials | None = Depends(_http_basic),
 ) -> None:
-    """Same user/password as in .env; should match nginx auth_basic (if used)."""
-    expected_user, expected_password = _admin_basic_credentials()
-    if not expected_user or not expected_password:
+    """HTTP Basic for reboot; same credentials as site-wide auth when configured."""
+    if not _admin_basic_configured():
         raise HTTPException(
             status_code=503,
             detail="Admin reboot is disabled. Set ADMIN_AUTH_USER and ADMIN_AUTH_PASSWORD.",
@@ -84,9 +135,7 @@ def require_admin_basic(
             detail="Authentication required",
             headers={"WWW-Authenticate": "Basic"},
         )
-    user_ok = secrets.compare_digest(credentials.username, expected_user)
-    pass_ok = secrets.compare_digest(credentials.password, expected_password)
-    if not user_ok or not pass_ok:
+    if not _credentials_tuple_valid(credentials.username, credentials.password):
         raise HTTPException(
             status_code=401,
             detail="Invalid credentials",
