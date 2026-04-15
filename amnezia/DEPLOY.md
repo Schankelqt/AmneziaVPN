@@ -109,6 +109,12 @@ Fill real values in `/opt/horizonnetvpn/app/amnezia/.env.prod`:
 - `WG_EASY_INIT_PASSWORD`
 - `WG_EASY_INIT_HOST` (your public server IP or DNS)
 
+Important for Docker mode:
+
+- Do **not** set `DATABASE_URL` to `127.0.0.1` in `.env.prod`.
+- `control-plane` connects to Postgres via Docker service name `postgres`.
+- The compose file injects the correct `DATABASE_URL` automatically.
+
 ## 4) Start full Docker stack (control-plane + postgres + wg-easy)
 
 ```bash
