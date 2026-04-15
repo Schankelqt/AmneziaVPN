@@ -57,10 +57,21 @@ docker compose version
 ```bash
 cd /opt/horizonnetvpn/app/amnezia/wg_backend
 cp .env.example .env
-nano .env   # WG_HOST=ваш публичный IP или домен, WG_EASY_PASSWORD=сильный пароль
+nano .env   # WG_HOST=ваш публичный IP или домен, WG_EASY_PASSWORD_HASH=bcrypt хэш пароля
 docker compose up -d
 docker compose ps
 ```
+
+Важно для `wg-easy:15`:
+
+- В контейнер передаётся `PASSWORD_HASH` (bcrypt), а не plain `PASSWORD`.
+- Plain пароль вы задаёте сами и из него генерируете hash:
+
+```bash
+docker run --rm ghcr.io/wg-easy/wg-easy wgpw 'your-strong-password'
+```
+
+- Для API control plane (`WG_EASY_USERNAME`/`WG_EASY_PASSWORD`) указывайте **plain** пароль, которым логинитесь в UI.
 
 ### 3) Firewall
 
@@ -90,16 +101,26 @@ ssh -L 51821:127.0.0.1:51821 root@ВАШ_IP
 
 ---
 
-## Часть C — связка с control_plane (следующий этап разработки)
+## Часть C — связка с control_plane
 
-Сейчас в коде используется `MockProvider`. Нужно реализовать, например, **`WgEasyProvider`**:
+`WgEasyProvider` уже реализован в `control_plane`.
 
-1. Вызовы HTTP API wg-easy (или чтение/запись через официально поддерживаемый механизм версии 15 — смотреть документацию wg-easy для вашего тега образа).
-2. `create_client` → создать peer, вернуть **текст конфига** для пользователя.
-3. `revoke_client` → удалить peer.
-4. `get_config` → отдать актуальный конфиг.
+Переключение:
 
-Переключение провайдера — через переменные окружения в `.env` control_plane (например `VPN_PROVIDER=wgeasy` + URL + токен/пароль для API).
+```env
+VPN_PROVIDER=wgeasy
+WG_EASY_BASE_URL=http://127.0.0.1:51821
+WG_EASY_USERNAME=admin
+WG_EASY_PASSWORD=<plain password from wg-easy login>
+WG_EASY_VERIFY_TLS=false
+WG_EASY_TIMEOUT_SECONDS=10
+```
+
+Проверка API wg-easy с сервера:
+
+```bash
+curl -u 'admin:<plain password>' http://127.0.0.1:51821/api/client
+```
 
 ### Про Amnezia-клиент
 
@@ -112,5 +133,5 @@ ssh -L 51821:127.0.0.1:51821 root@ВАШ_IP
 1. systemd для control plane — готово по инструкции выше.
 2. nginx + HTTPS для админки/API — по `DEPLOY.md`.
 3. wg-easy поднят, UDP 51820 открыт, UI проверен через туннель.
-4. Реализовать `WgEasyProvider` и переключить `app/main.py` с `MockProvider`.
+4. Переключить `control_plane/.env` на `VPN_PROVIDER=wgeasy` и проверить `GET /v1/stats/traffic` (`protocol=wireguard-wgeasy`).
 5. Подключить Telegram-бот к API control_plane с секретом в заголовке.
