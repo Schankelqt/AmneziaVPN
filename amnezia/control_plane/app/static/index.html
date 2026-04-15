@@ -12,6 +12,17 @@
       <p class="muted">Fast admin UI for create/renew/revoke/config.</p>
 
       <section class="card">
+        <h2>Server</h2>
+        <p class="muted">
+          Schedules a reboot in 1 minute (<code>shutdown -r +1</code>). Use the same login and password
+          as for this admin site; no extra token.
+        </p>
+        <div class="actions">
+          <button id="reboot-btn" class="warn" type="button">Schedule server reboot (1 min)</button>
+        </div>
+      </section>
+
+      <section class="card">
         <h2>Create client</h2>
         <form id="create-form">
           <label>

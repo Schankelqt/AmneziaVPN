@@ -16,9 +16,13 @@ function setResponse(data) {
 }
 
 async function api(path, options = {}) {
+  const { headers: optionHeaders, ...fetchRest } = options;
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
+    ...fetchRest,
+    headers: {
+      "Content-Type": "application/json",
+      ...(optionHeaders || {}),
+    },
   });
 
   let payload = null;
@@ -231,6 +235,25 @@ document.getElementById("config-btn").addEventListener("click", async () => {
 document.getElementById("refresh-btn").addEventListener("click", async () => {
   await refreshList();
   await refreshStats();
+});
+
+document.getElementById("reboot-btn").addEventListener("click", async () => {
+  const ok = window.confirm(
+    "Schedule a full server reboot in 1 minute? SSH and VPN will drop until the host is back."
+  );
+  if (!ok) {
+    return;
+  }
+  try {
+    const result = await api("/v1/admin/reboot", {
+      method: "POST",
+      body: JSON.stringify({}),
+      credentials: "include",
+    });
+    setResponse(result);
+  } catch (error) {
+    setResponse({ error: String(error) });
+  }
 });
 
 refreshList();

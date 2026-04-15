@@ -1,3 +1,6 @@
+from unittest.mock import patch
+
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -64,3 +67,32 @@ def test_client_lifecycle() -> None:
 
     renew_after_revoke = client.post(f"/v1/clients/{client_id}/renew", json={"add_days": 1})
     assert renew_after_revoke.status_code == 409
+
+
+def test_admin_reboot_disabled_without_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ADMIN_AUTH_USER", raising=False)
+    monkeypatch.delenv("ADMIN_AUTH_PASSWORD", raising=False)
+    resp = client.post("/v1/admin/reboot")
+    assert resp.status_code == 503
+
+
+def test_admin_reboot_unauthorized(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ADMIN_AUTH_USER", "admin")
+    monkeypatch.setenv("ADMIN_AUTH_PASSWORD", "correct")
+    resp = client.post("/v1/admin/reboot", auth=("admin", "wrong"))
+    assert resp.status_code == 401
+
+
+@patch("app.main.subprocess.run")
+def test_admin_reboot_schedules(
+    mock_run: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ADMIN_AUTH_USER", "admin")
+    monkeypatch.setenv("ADMIN_AUTH_PASSWORD", "secret")
+    resp = client.post("/v1/admin/reboot", auth=("admin", "secret"))
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "scheduled"
+    assert data["delay_minutes"] == 1
+    assert mock_run.called

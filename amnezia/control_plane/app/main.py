@@ -1,9 +1,13 @@
+import os
+import secrets
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import FileResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 
 from .provider.mock import MockProvider
@@ -53,6 +57,66 @@ def _traffic_until(record: dict, at_time: datetime) -> tuple[int, int]:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+_http_basic = HTTPBasic(auto_error=False)
+
+
+def _admin_basic_credentials() -> tuple[str, str]:
+    user = os.environ.get("ADMIN_AUTH_USER", "").strip()
+    password = os.environ.get("ADMIN_AUTH_PASSWORD", "").strip()
+    return user, password
+
+
+def require_admin_basic(
+    credentials: HTTPBasicCredentials | None = Depends(_http_basic),
+) -> None:
+    """Same user/password as in .env; should match nginx auth_basic (if used)."""
+    expected_user, expected_password = _admin_basic_credentials()
+    if not expected_user or not expected_password:
+        raise HTTPException(
+            status_code=503,
+            detail="Admin reboot is disabled. Set ADMIN_AUTH_USER and ADMIN_AUTH_PASSWORD.",
+        )
+    if credentials is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    user_ok = secrets.compare_digest(credentials.username, expected_user)
+    pass_ok = secrets.compare_digest(credentials.password, expected_password)
+    if not user_ok or not pass_ok:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+
+@app.post("/v1/admin/reboot")
+def admin_reboot(_auth=Depends(require_admin_basic)) -> dict[str, str | int]:
+    """Schedule OS reboot in 1 minute. Requires HTTP Basic (ADMIN_AUTH_* in .env)."""
+    try:
+        subprocess.run(
+            ["/sbin/shutdown", "-r", "+1", "HorizonNetVPN control-plane admin reboot"],
+            check=True,
+            timeout=15,
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=500,
+            detail="shutdown binary not found (expected /sbin/shutdown on Linux).",
+        ) from None
+    except subprocess.CalledProcessError as exc:
+        raise HTTPException(status_code=500, detail=f"shutdown failed: {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=500, detail=f"shutdown timed out: {exc}") from exc
+    return {
+        "status": "scheduled",
+        "delay_minutes": 1,
+        "message": "System reboot is scheduled in 1 minute.",
+    }
 
 
 @app.get("/")
