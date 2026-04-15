@@ -307,3 +307,23 @@ tbody tr:hover {
   display: block;
   max-width: 100%;
 }
+
+.qrcode-box {
+  min-height: 320px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  text-align: center;
+}
+
+.qrcode-box svg {
+  width: min(320px, 100%);
+  height: auto;
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px;
+}

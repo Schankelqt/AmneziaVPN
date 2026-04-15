@@ -94,3 +94,13 @@ class WgEasyProvider(VpnProvider):
                 f"wg-easy get_config unexpected status {response.status_code}: {response.text[:500]}"
             )
         return response.text
+
+    def get_qr_svg(self, provider_ref: str) -> str:
+        response = self._request("GET", f"/api/client/{provider_ref}/qrcode.svg")
+        if response.status_code == 404:
+            raise KeyError(f"Unknown provider_ref: {provider_ref}")
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"wg-easy get_qr_svg unexpected status {response.status_code}: {response.text[:500]}"
+            )
+        return response.text

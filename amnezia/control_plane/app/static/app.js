@@ -3,6 +3,7 @@ const clientsBody = document.getElementById("clients-body");
 
 const clientIdInput = document.getElementById("client_id");
 const addDaysInput = document.getElementById("add_days");
+const qrCodeBox = document.getElementById("qrcode-box");
 const metricProtocol = document.getElementById("metric-protocol");
 const metricRx = document.getElementById("metric-rx");
 const metricTx = document.getElementById("metric-tx");
@@ -269,6 +270,35 @@ document.getElementById("config-btn").addEventListener("click", async () => {
     const result = await api(`/v1/clients/${clientId}/config`);
     setResponse(result);
   } catch (error) {
+    setResponse({ error: String(error) });
+  }
+});
+
+document.getElementById("qrcode-btn").addEventListener("click", async () => {
+  const clientId = clientIdInput.value.trim();
+  if (!clientId) {
+    setResponse({ error: "Укажите ID клиента" });
+    return;
+  }
+  try {
+    const response = await fetch(`/v1/clients/${clientId}/qrcode.svg`, {
+      credentials: "same-origin",
+    });
+    if (!response.ok) {
+      let payload = { message: "Не удалось загрузить QR" };
+      try {
+        payload = await response.json();
+      } catch {
+        // Keep fallback payload
+      }
+      throw new Error(JSON.stringify(payload, null, 2));
+    }
+    const svg = await response.text();
+    qrCodeBox.classList.remove("muted");
+    qrCodeBox.innerHTML = svg;
+  } catch (error) {
+    qrCodeBox.classList.add("muted");
+    qrCodeBox.textContent = "Не удалось загрузить QR.";
     setResponse({ error: String(error) });
   }
 });

@@ -64,6 +64,10 @@ def test_client_lifecycle() -> None:
     assert config_resp.status_code == 200
     assert config_resp.json()["client_id"] == client_id
 
+    qrcode_resp = client.get(f"/v1/clients/{client_id}/qrcode.svg")
+    assert qrcode_resp.status_code == 200
+    assert "svg" in qrcode_resp.text.lower()
+
     list_resp = client.get("/v1/clients")
     assert list_resp.status_code == 200
     assert any(item["client_id"] == client_id for item in list_resp.json())

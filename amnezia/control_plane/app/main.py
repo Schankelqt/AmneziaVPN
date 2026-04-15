@@ -340,3 +340,17 @@ def get_client_config(client_id: str) -> ClientResponse:
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return _build_response(record)
+
+
+@app.get("/v1/clients/{client_id}/qrcode.svg")
+def get_client_qr_svg(client_id: str) -> Response:
+    record = clients.get(client_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Client not found")
+    try:
+        qr_svg = provider.get_qr_svg(record["provider_ref"])
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return Response(content=qr_svg, media_type="image/svg+xml")

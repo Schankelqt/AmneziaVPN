@@ -65,6 +65,7 @@
             <button id="renew-btn" type="button">Продлить</button>
             <button id="revoke-btn" class="warn" type="button">Отозвать</button>
             <button id="config-btn" type="button">Получить конфиг</button>
+            <button id="qrcode-btn" type="button">Показать QR</button>
             <button id="refresh-btn" type="button">Обновить списки</button>
           </div>
         </section>
@@ -72,6 +73,12 @@
         <section class="card compact">
           <h2>Ответ API</h2>
           <pre id="response-box">Действий пока не было.</pre>
+        </section>
+
+        <section class="card compact">
+          <h2>QR для клиента</h2>
+          <p class="muted">Выберите клиента и нажмите «Показать QR». Отсканируйте код в мобильном WireGuard/Amnezia.</p>
+          <div id="qrcode-box" class="qrcode-box muted">QR еще не загружен.</div>
         </section>
 
         <section class="card compact">

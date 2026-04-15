@@ -31,3 +31,17 @@ class MockProvider(VpnProvider):
         if not config:
             raise KeyError(f"Unknown provider_ref: {provider_ref}")
         return config
+
+    def get_qr_svg(self, provider_ref: str) -> str:
+        # Lightweight mock to keep UI flow/test coverage without external deps.
+        if provider_ref not in self._store:
+            raise KeyError(f"Unknown provider_ref: {provider_ref}")
+        return (
+            "<svg xmlns='http://www.w3.org/2000/svg' width='300' height='300' viewBox='0 0 300 300'>"
+            "<rect width='300' height='300' fill='white'/>"
+            "<rect x='24' y='24' width='80' height='80' fill='black'/>"
+            "<rect x='196' y='24' width='80' height='80' fill='black'/>"
+            "<rect x='24' y='196' width='80' height='80' fill='black'/>"
+            "<text x='150' y='165' text-anchor='middle' font-size='18' fill='black'>MOCK QR</text>"
+            "</svg>"
+        )

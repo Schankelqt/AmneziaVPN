@@ -13,3 +13,7 @@ class VpnProvider(ABC):
     @abstractmethod
     def get_config(self, provider_ref: str) -> str:
         """Returns config text for client."""
+
+    @abstractmethod
+    def get_qr_svg(self, provider_ref: str) -> str:
+        """Returns SVG QR representation of client config."""
