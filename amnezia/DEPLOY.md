@@ -104,6 +104,20 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
+### 3.5) Start PostgreSQL for persistent clients storage
+
+```bash
+cd /opt/horizonnetvpn/app/amnezia/control_plane
+docker compose -f docker-compose.postgres.yml up -d
+docker compose -f docker-compose.postgres.yml ps
+```
+
+In `/opt/horizonnetvpn/app/amnezia/control_plane/.env` keep:
+
+```env
+DATABASE_URL=postgresql+psycopg://horizonnetvpn:horizonnetvpn@127.0.0.1:5432/horizonnetvpn
+```
+
 Quick check:
 
 ```bash

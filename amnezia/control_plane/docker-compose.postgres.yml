@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: horizonnetvpn-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: horizonnetvpn
+      POSTGRES_USER: horizonnetvpn
+      POSTGRES_PASSWORD: horizonnetvpn
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U horizonnetvpn -d horizonnetvpn"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:

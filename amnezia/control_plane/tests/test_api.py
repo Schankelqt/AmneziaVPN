@@ -3,6 +3,8 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 
+from app.db import SessionLocal
+from app.models import ClientRecord
 from app.main import app
 
 
@@ -13,6 +15,12 @@ client = TestClient(app)
 def _clear_admin_auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ADMIN_AUTH_USER", raising=False)
     monkeypatch.delenv("ADMIN_AUTH_PASSWORD", raising=False)
+    db = SessionLocal()
+    try:
+        db.query(ClientRecord).delete()
+        db.commit()
+    finally:
+        db.close()
 
 
 def test_frontend_and_health() -> None:
