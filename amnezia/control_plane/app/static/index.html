@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HorizonNetVPN — панель управления</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260415-qr-fix1" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260416-filters-users-log1" />
   </head>
   <body>
     <main class="container">
@@ -35,6 +35,10 @@
               <label>
                 Telegram User ID
                 <input id="telegram_user_id" type="number" min="1" required />
+              </label>
+              <label>
+                User name (из Telegram)
+                <input id="user_name" type="text" placeholder="@username или имя" />
               </label>
               <label>
                 Дней по тарифу
@@ -83,12 +87,27 @@
 
         <section class="card compact">
           <h2>Клиенты</h2>
+          <div class="row filters-row">
+            <label>
+              Фильтр: Telegram ID / User name
+              <input id="clients-filter" type="text" placeholder="например 775766895 или @kirill" />
+            </label>
+            <label>
+              Только активные
+              <select id="clients-active-filter">
+                <option value="all">Все</option>
+                <option value="active">Да</option>
+                <option value="revoked">Нет</option>
+              </select>
+            </label>
+          </div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>ID клиента</th>
                   <th>Telegram</th>
+                  <th>User name</th>
                   <th>Активен</th>
                   <th>Истекает (UTC)</th>
                 </tr>
@@ -100,6 +119,32 @@
 
         <section class="card compact">
           <h2>Статистика трафика</h2>
+          <div class="row filters-row">
+            <label>
+              Масштаб
+              <select id="traffic-scale">
+                <option value="day">День</option>
+                <option value="week">Неделя</option>
+                <option value="month">Месяц</option>
+              </select>
+            </label>
+            <label>
+              Дата от
+              <input id="traffic-date-from" type="date" />
+            </label>
+            <label>
+              Дата до
+              <input id="traffic-date-to" type="date" />
+            </label>
+            <label>
+              Пользователи (Telegram ID через запятую)
+              <input id="traffic-user-ids" type="text" placeholder="775766895,123456789" />
+            </label>
+          </div>
+          <div class="actions">
+            <button id="apply-traffic-filters-btn" type="button">Применить фильтры графика</button>
+            <button id="reset-traffic-filters-btn" type="button">Сбросить фильтры графика</button>
+          </div>
           <div class="stats-grid">
             <div class="metric">
               <span class="metric-label">Протокол</span>
@@ -136,6 +181,6 @@
       </div>
     </main>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/static/app.js?v=20260415-qr-fix1"></script>
+    <script src="/static/app.js?v=20260416-filters-users-log1"></script>
   </body>
 </html>

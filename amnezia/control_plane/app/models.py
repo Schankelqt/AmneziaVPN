@@ -11,6 +11,7 @@ class ClientRecord(Base):
 
     client_id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
     telegram_user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_name: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     provider_ref: Mapped[str] = mapped_column(String(128), index=True)
     config: Mapped[str] = mapped_column(Text)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
@@ -19,3 +20,16 @@ class ClientRecord(Base):
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+
+class TrafficSample(Base):
+    __tablename__ = "traffic_samples"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    sample_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    client_id: Mapped[str] = mapped_column(String(64), index=True)
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    user_name: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    rx_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    tx_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_bytes: Mapped[int] = mapped_column(BigInteger, default=0)

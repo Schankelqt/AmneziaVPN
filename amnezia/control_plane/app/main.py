@@ -3,7 +3,7 @@ import os
 import secrets
 import subprocess
 from collections import deque
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -17,7 +17,7 @@ from starlette.responses import Response
 from sqlalchemy.orm import Session
 
 from .db import get_db, init_db
-from .models import ClientRecord
+from .models import ClientRecord, TrafficSample
 from .provider.base import VpnProvider
 from .provider.mock import MockProvider
 from .provider.wgeasy import WgEasyConfig, WgEasyProvider
@@ -70,7 +70,7 @@ def _build_provider() -> tuple[str, VpnProvider]:
 
 
 provider_kind, provider = _build_provider()
-traffic_history: deque[dict[str, int | str]] = deque(maxlen=24 * 12)
+traffic_history: deque[dict[str, int | str]] = deque(maxlen=50000)
 
 _http_basic = HTTPBasic(auto_error=False)
 
@@ -137,6 +137,7 @@ def _build_response(client: ClientRecord) -> ClientResponse:
     return ClientResponse(
         client_id=client.client_id,
         telegram_user_id=client.telegram_user_id,
+        user_name=client.user_name,
         active=client.active,
         expires_at=client.expires_at,
         config=client.config,
@@ -157,7 +158,7 @@ def _active_client_for_telegram_user(db: Session, telegram_user_id: int) -> Clie
 
 
 def _create_client_record(
-    db: Session, telegram_user_id: int, plan_days: int, remark: str
+    db: Session, telegram_user_id: int, user_name: str | None, plan_days: int, remark: str
 ) -> ClientRecord:
     client_id = str(uuid4())
     try:
@@ -169,6 +170,7 @@ def _create_client_record(
     record = ClientRecord(
         client_id=client_id,
         telegram_user_id=telegram_user_id,
+        user_name=(user_name or "").strip() or None,
         provider_ref=provider_ref,
         config=config,
         expires_at=expires_at,
@@ -180,6 +182,46 @@ def _create_client_record(
     db.commit()
     db.refresh(record)
     return record
+
+
+def _parse_user_id_filter(raw: str | None) -> set[int]:
+    if not raw:
+        return set()
+    result: set[int] = set()
+    for chunk in raw.split(","):
+        value = chunk.strip()
+        if not value:
+            continue
+        try:
+            parsed = int(value)
+        except ValueError:
+            continue
+        if parsed > 0:
+            result.add(parsed)
+    return result
+
+
+def _series_window(
+    now: datetime, scale: str, date_from_raw: str | None, date_to_raw: str | None
+) -> tuple[datetime, datetime, timedelta]:
+    valid_scales = {"day", "week", "month"}
+    normalized_scale = scale if scale in valid_scales else "day"
+    if date_from_raw or date_to_raw:
+        today = now.date()
+        from_date = date.fromisoformat(date_from_raw) if date_from_raw else today
+        to_date = date.fromisoformat(date_to_raw) if date_to_raw else from_date
+        if to_date < from_date:
+            from_date, to_date = to_date, from_date
+        start = datetime.combine(from_date, time.min, tzinfo=timezone.utc)
+        end = datetime.combine(to_date, time.max, tzinfo=timezone.utc)
+        span_days = (to_date - from_date).days + 1
+        bucket = timedelta(hours=1) if span_days <= 2 else timedelta(days=1)
+        return start, end, bucket
+    if normalized_scale == "week":
+        return now - timedelta(days=7), now, timedelta(days=1)
+    if normalized_scale == "month":
+        return now - timedelta(days=30), now, timedelta(days=1)
+    return now - timedelta(hours=24), now, timedelta(hours=1)
 
 
 def _rate_for_client(record: ClientRecord) -> tuple[int, int]:
@@ -204,41 +246,75 @@ def _traffic_until(record: ClientRecord, at_time: datetime) -> tuple[int, int]:
     return seconds * rx_rate, seconds * tx_rate
 
 
-def _build_wgeasy_series(now: datetime, total_rx: int, total_tx: int) -> list[dict[str, int | str]]:
-    # Keep lightweight in-memory history; after restart we start filling it again.
-    traffic_history.append(
-        {
-            "ts": now.isoformat(),
-            "rx_bytes": total_rx,
-            "tx_bytes": total_tx,
-            "total_bytes": total_rx + total_tx,
-        }
-    )
-    points = list(traffic_history)
-    series = []
-    for offset in range(23, -1, -1):
-        point_time = now - timedelta(hours=offset)
-        chosen = None
-        for point in points:
-            point_ts = datetime.fromisoformat(str(point["ts"]))
-            if point_ts <= point_time:
-                chosen = point
-            else:
-                break
-        if chosen is None:
-            chosen = {
-                "rx_bytes": 0,
-                "tx_bytes": 0,
-                "total_bytes": 0,
-            }
-        series.append(
+def _store_traffic_samples(
+    db: Session, now: datetime, records: list[ClientRecord], snapshot: dict[str, dict[str, int]]
+) -> None:
+    for item in records:
+        traffic = snapshot.get(item.provider_ref) or snapshot.get(str(item.provider_ref)) or {}
+        raw_rx = int(traffic.get("rx_bytes") or 0)
+        raw_tx = int(traffic.get("tx_bytes") or 0)
+        previous = (
+            db.query(TrafficSample)
+            .filter(TrafficSample.client_id == item.client_id)
+            .order_by(TrafficSample.sample_at.desc())
+            .first()
+        )
+        if previous:
+            delta_rx = max(0, raw_rx - int(previous.rx_bytes))
+            delta_tx = max(0, raw_tx - int(previous.tx_bytes))
+        else:
+            delta_rx = 0
+            delta_tx = 0
+        sample = TrafficSample(
+            sample_at=now,
+            client_id=item.client_id,
+            telegram_user_id=item.telegram_user_id,
+            user_name=item.user_name,
+            rx_bytes=raw_rx,
+            tx_bytes=raw_tx,
+            total_bytes=raw_rx + raw_tx,
+        )
+        db.add(sample)
+        # Save deltas in lightweight in-memory history for immediate charts.
+        traffic_history.append(
             {
-                "ts": point_time.isoformat(),
-                "rx_bytes": int(chosen["rx_bytes"]),
-                "tx_bytes": int(chosen["tx_bytes"]),
-                "total_bytes": int(chosen["total_bytes"]),
+                "ts": now.isoformat(),
+                "client_id": item.client_id,
+                "telegram_user_id": item.telegram_user_id,
+                "user_name": item.user_name or "",
+                "delta_rx": delta_rx,
+                "delta_tx": delta_tx,
             }
         )
+    db.commit()
+
+
+def _build_series_from_samples(
+    start: datetime,
+    end: datetime,
+    bucket: timedelta,
+    samples: list[dict[str, int | datetime]],
+) -> list[dict[str, int | str]]:
+    series = []
+    cursor = start
+    while cursor <= end:
+        next_cursor = cursor + bucket
+        rx_sum = 0
+        tx_sum = 0
+        for sample in samples:
+            sample_at = sample["sample_at"]
+            if isinstance(sample_at, datetime) and cursor <= sample_at < next_cursor:
+                rx_sum += int(sample.get("delta_rx", 0))
+                tx_sum += int(sample.get("delta_tx", 0))
+        series.append(
+            {
+                "ts": cursor.isoformat(),
+                "rx_bytes": rx_sum,
+                "tx_bytes": tx_sum,
+                "total_bytes": rx_sum + tx_sum,
+            }
+        )
+        cursor = next_cursor
     return series
 
 
@@ -254,6 +330,30 @@ def db_health(db: Session = Depends(get_db)) -> dict[str, str]:
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"database is unavailable: {exc}") from exc
     return {"status": "ok"}
+
+
+@app.get("/v1/logs/traffic")
+def traffic_logs(limit: int = 100, db: Session = Depends(get_db)) -> dict:
+    bounded_limit = max(1, min(limit, 500))
+    rows = (
+        db.query(TrafficSample)
+        .order_by(TrafficSample.sample_at.desc())
+        .limit(bounded_limit)
+        .all()
+    )
+    items = [
+        {
+            "sample_at": row.sample_at,
+            "client_id": row.client_id,
+            "telegram_user_id": row.telegram_user_id,
+            "user_name": row.user_name,
+            "rx_bytes": row.rx_bytes,
+            "tx_bytes": row.tx_bytes,
+            "total_bytes": row.total_bytes,
+        }
+        for row in rows
+    ]
+    return {"items": items, "note": "WireGuard does not expose destination services/domains without DPI."}
 
 
 def require_admin_basic(
@@ -335,10 +435,19 @@ def list_clients(db: Session = Depends(get_db)) -> list[ClientResponse]:
 
 
 @app.get("/v1/stats/traffic")
-def traffic_stats(db: Session = Depends(get_db)) -> dict:
+def traffic_stats(
+    scale: str = "day",
+    date_from: str | None = None,
+    date_to: str | None = None,
+    user_ids: str | None = None,
+    db: Session = Depends(get_db),
+) -> dict:
     now = datetime.now(tz=timezone.utc)
     protocol = "wireguard-wgeasy" if provider_kind == "wgeasy" else "amneziawg-mock"
     records = db.query(ClientRecord).all()
+    selected_user_ids = _parse_user_id_filter(user_ids)
+    if selected_user_ids:
+        records = [item for item in records if int(item.telegram_user_id) in selected_user_ids]
 
     if provider_kind == "wgeasy":
         if not isinstance(provider, WgEasyProvider):
@@ -348,32 +457,81 @@ def traffic_stats(db: Session = Depends(get_db)) -> dict:
         except RuntimeError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-        per_user = []
-        total_rx = 0
-        total_tx = 0
-        for item in records:
-            traffic = snapshot.get(item.provider_ref) or snapshot.get(str(item.provider_ref)) or {}
-            rx_bytes = int(traffic.get("rx_bytes") or 0)
-            tx_bytes = int(traffic.get("tx_bytes") or 0)
-            total_rx += rx_bytes
-            total_tx += tx_bytes
-            per_user.append(
+        # Journal traffic samples so we can filter by date/range later.
+        _store_traffic_samples(db, now, records, snapshot)
+        start, end, bucket = _series_window(now, scale, date_from, date_to)
+        sample_dicts: list[dict[str, int | datetime]] = []
+        for entry in traffic_history:
+            point_ts = datetime.fromisoformat(str(entry["ts"]))
+            if point_ts.tzinfo is None:
+                point_ts = point_ts.replace(tzinfo=timezone.utc)
+            if point_ts < start or point_ts > end:
+                continue
+            tg_id = int(entry.get("telegram_user_id") or 0)
+            if selected_user_ids and tg_id not in selected_user_ids:
+                continue
+            sample_dicts.append(
                 {
-                    "client_id": item.client_id,
-                    "telegram_user_id": item.telegram_user_id,
-                    "active": item.active,
-                    "expires_at": item.expires_at,
-                    "rx_bytes": rx_bytes,
-                    "tx_bytes": tx_bytes,
-                    "total_bytes": rx_bytes + tx_bytes,
+                    "sample_at": point_ts,
+                    "telegram_user_id": tg_id,
+                    "delta_rx": int(entry.get("delta_rx") or 0),
+                    "delta_tx": int(entry.get("delta_tx") or 0),
                 }
             )
+        series = _build_series_from_samples(start, end, bucket, sample_dicts)
 
-        per_user.sort(key=lambda user: user["total_bytes"], reverse=True)
-        series = _build_wgeasy_series(now, total_rx, total_tx)
+        per_user_map: dict[int, dict] = {}
+        for row in sample_dicts:
+            uid = int(row.get("telegram_user_id") or 0)
+            if uid <= 0:
+                continue
+            current = per_user_map.get(uid)
+            if current is None:
+                current = {
+                    "telegram_user_id": uid,
+                    "user_name": None,
+                    "rx_bytes": 0,
+                    "tx_bytes": 0,
+                    "total_bytes": 0,
+                    "client_id": None,
+                    "active": False,
+                    "expires_at": None,
+                }
+                per_user_map[uid] = current
+            current["rx_bytes"] += int(row.get("delta_rx") or 0)
+            current["tx_bytes"] += int(row.get("delta_tx") or 0)
+            current["total_bytes"] += int(row.get("delta_rx") or 0) + int(row.get("delta_tx") or 0)
+
+        record_map = {item.telegram_user_id: item for item in records}
+        per_user = []
+        for uid, agg in per_user_map.items():
+            record = record_map.get(uid)
+            if record:
+                agg["active"] = record.active
+                agg["expires_at"] = record.expires_at
+                agg["client_id"] = record.client_id
+                if not agg.get("user_name"):
+                    agg["user_name"] = record.user_name
+            per_user.append(agg)
+
+        per_user.sort(key=lambda user: int(user["total_bytes"]), reverse=True)
+        total_rx = sum(int(item["rx_bytes"]) for item in per_user)
+        total_tx = sum(int(item["tx_bytes"]) for item in per_user)
+        available_users = [
+            {
+                "telegram_user_id": item.telegram_user_id,
+                "user_name": item.user_name,
+                "active": item.active,
+            }
+            for item in db.query(ClientRecord).order_by(ClientRecord.telegram_user_id.asc()).all()
+        ]
         return {
             "protocol": protocol,
             "updated_at": now.isoformat(),
+            "scale": scale,
+            "date_from": start.date().isoformat(),
+            "date_to": end.date().isoformat(),
+            "selected_user_ids": sorted(selected_user_ids),
             "totals": {
                 "rx_bytes": total_rx,
                 "tx_bytes": total_tx,
@@ -381,6 +539,7 @@ def traffic_stats(db: Session = Depends(get_db)) -> dict:
             },
             "per_user": per_user,
             "series_24h": series,
+            "available_users": available_users,
         }
 
     per_user = []
@@ -425,6 +584,10 @@ def traffic_stats(db: Session = Depends(get_db)) -> dict:
     return {
         "protocol": protocol,
         "updated_at": now.isoformat(),
+        "scale": scale,
+        "date_from": now.date().isoformat(),
+        "date_to": now.date().isoformat(),
+        "selected_user_ids": sorted(selected_user_ids),
         "totals": {
             "rx_bytes": total_rx,
             "tx_bytes": total_tx,
@@ -432,6 +595,14 @@ def traffic_stats(db: Session = Depends(get_db)) -> dict:
         },
         "per_user": per_user,
         "series_24h": series,
+        "available_users": [
+            {
+                "telegram_user_id": item.telegram_user_id,
+                "user_name": item.user_name,
+                "active": item.active,
+            }
+            for item in records
+        ],
     }
 
 
@@ -440,6 +611,7 @@ def create_client(payload: CreateClientRequest, db: Session = Depends(get_db)) -
     record = _create_client_record(
         db=db,
         telegram_user_id=payload.telegram_user_id,
+        user_name=payload.user_name,
         plan_days=payload.plan_days,
         remark=payload.remark,
     )
@@ -534,6 +706,10 @@ def bot_provision_access(
 ) -> ClientResponse:
     active = _active_client_for_telegram_user(db, telegram_user_id)
     if active and not payload.recreate_if_exists:
+        if payload.user_name and active.user_name != payload.user_name:
+            active.user_name = payload.user_name
+            db.commit()
+            db.refresh(active)
         return _build_response(active)
     if active and payload.recreate_if_exists:
         try:
@@ -548,6 +724,7 @@ def bot_provision_access(
     record = _create_client_record(
         db=db,
         telegram_user_id=telegram_user_id,
+        user_name=payload.user_name,
         plan_days=payload.plan_days,
         remark=payload.remark,
     )

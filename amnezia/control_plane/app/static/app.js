@@ -8,9 +8,22 @@ const metricProtocol = document.getElementById("metric-protocol");
 const metricRx = document.getElementById("metric-rx");
 const metricTx = document.getElementById("metric-tx");
 const metricTotal = document.getElementById("metric-total");
+const clientsFilterInput = document.getElementById("clients-filter");
+const clientsActiveFilter = document.getElementById("clients-active-filter");
+const trafficScaleInput = document.getElementById("traffic-scale");
+const trafficDateFromInput = document.getElementById("traffic-date-from");
+const trafficDateToInput = document.getElementById("traffic-date-to");
+const trafficUserIdsInput = document.getElementById("traffic-user-ids");
 
 let lineChart = null;
 let userChart = null;
+let allClients = [];
+const trafficFilters = {
+  scale: "day",
+  dateFrom: "",
+  dateTo: "",
+  userIds: "",
+};
 
 const chartDefaults = {
   responsive: true,
@@ -61,11 +74,14 @@ function formatBytes(bytes) {
 }
 
 function renderCharts(stats) {
-  const labels = stats.series_24h.map((point) => point.ts.slice(11, 16));
+  const labels = stats.series_24h.map((point) => {
+    const ts = String(point.ts);
+    return stats.scale === "day" ? ts.slice(11, 16) : ts.slice(5, 10);
+  });
   const rxData = stats.series_24h.map((point) => point.rx_bytes);
   const txData = stats.series_24h.map((point) => point.tx_bytes);
   const users = stats.per_user.slice(0, 10);
-  const userLabels = users.map((item) => String(item.telegram_user_id));
+  const userLabels = users.map((item) => item.user_name || String(item.telegram_user_id));
   const userTotals = users.map((item) => item.total_bytes);
 
   if (lineChart) {
@@ -171,7 +187,18 @@ function renderCharts(stats) {
 
 async function refreshStats() {
   try {
-    const stats = await api("/v1/stats/traffic");
+    const params = new URLSearchParams();
+    params.set("scale", trafficFilters.scale || "day");
+    if (trafficFilters.dateFrom) {
+      params.set("date_from", trafficFilters.dateFrom);
+    }
+    if (trafficFilters.dateTo) {
+      params.set("date_to", trafficFilters.dateTo);
+    }
+    if (trafficFilters.userIds.trim()) {
+      params.set("user_ids", trafficFilters.userIds.trim());
+    }
+    const stats = await api(`/v1/stats/traffic?${params.toString()}`);
     metricProtocol.textContent = stats.protocol;
     metricRx.textContent = formatBytes(stats.totals.rx_bytes);
     metricTx.textContent = formatBytes(stats.totals.tx_bytes);
@@ -182,23 +209,47 @@ async function refreshStats() {
   }
 }
 
+function renderClientRows() {
+  clientsBody.innerHTML = "";
+  const textFilter = clientsFilterInput.value.trim().toLowerCase();
+  const activeMode = clientsActiveFilter.value;
+  const filtered = allClients.filter((c) => {
+    if (activeMode === "active" && !c.active) {
+      return false;
+    }
+    if (activeMode === "revoked" && c.active) {
+      return false;
+    }
+    if (!textFilter) {
+      return true;
+    }
+    const byId = String(c.telegram_user_id).includes(textFilter);
+    const byName = String(c.user_name || "")
+      .toLowerCase()
+      .includes(textFilter);
+    const byClient = String(c.client_id).toLowerCase().includes(textFilter);
+    return byId || byName || byClient;
+  });
+  for (const c of filtered) {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${c.client_id}</td>
+      <td>${c.telegram_user_id}</td>
+      <td>${c.user_name || "—"}</td>
+      <td>${c.active ? "да" : "нет"}</td>
+      <td>${c.expires_at}</td>
+    `;
+    row.addEventListener("click", () => {
+      clientIdInput.value = c.client_id;
+    });
+    clientsBody.appendChild(row);
+  }
+}
+
 async function refreshList() {
   try {
-    const clients = await api("/v1/clients");
-    clientsBody.innerHTML = "";
-    for (const c of clients) {
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td>${c.client_id}</td>
-        <td>${c.telegram_user_id}</td>
-        <td>${c.active ? "да" : "нет"}</td>
-        <td>${c.expires_at}</td>
-      `;
-      row.addEventListener("click", () => {
-        clientIdInput.value = c.client_id;
-      });
-      clientsBody.appendChild(row);
-    }
+    allClients = await api("/v1/clients");
+    renderClientRows();
   } catch (error) {
     setResponse({ error: String(error) });
   }
@@ -208,6 +259,7 @@ document.getElementById("create-form").addEventListener("submit", async (event) 
   event.preventDefault();
   const payload = {
     telegram_user_id: Number(document.getElementById("telegram_user_id").value),
+    user_name: document.getElementById("user_name").value || null,
     plan_days: Number(document.getElementById("plan_days").value),
     remark: document.getElementById("remark").value,
   };
@@ -305,6 +357,34 @@ document.getElementById("qrcode-btn").addEventListener("click", async () => {
 
 document.getElementById("refresh-btn").addEventListener("click", async () => {
   await refreshList();
+  await refreshStats();
+});
+
+clientsFilterInput.addEventListener("input", () => {
+  renderClientRows();
+});
+
+clientsActiveFilter.addEventListener("change", () => {
+  renderClientRows();
+});
+
+document.getElementById("apply-traffic-filters-btn").addEventListener("click", async () => {
+  trafficFilters.scale = trafficScaleInput.value || "day";
+  trafficFilters.dateFrom = trafficDateFromInput.value || "";
+  trafficFilters.dateTo = trafficDateToInput.value || "";
+  trafficFilters.userIds = trafficUserIdsInput.value || "";
+  await refreshStats();
+});
+
+document.getElementById("reset-traffic-filters-btn").addEventListener("click", async () => {
+  trafficScaleInput.value = "day";
+  trafficDateFromInput.value = "";
+  trafficDateToInput.value = "";
+  trafficUserIdsInput.value = "";
+  trafficFilters.scale = "day";
+  trafficFilters.dateFrom = "";
+  trafficFilters.dateTo = "";
+  trafficFilters.userIds = "";
   await refreshStats();
 });
 
