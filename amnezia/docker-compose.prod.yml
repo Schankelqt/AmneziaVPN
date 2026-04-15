@@ -10,7 +10,7 @@ services:
     environment:
       # Inside Docker network, Postgres is reachable by service name.
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      WG_EASY_URL: http://wg-easy:${WG_EASY_UI_PORT:-51821}
+      WG_EASY_BASE_URL: http://wg-easy:${WG_EASY_UI_PORT:-51821}
     depends_on:
       postgres:
         condition: service_healthy
