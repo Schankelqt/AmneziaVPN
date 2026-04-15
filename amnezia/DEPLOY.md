@@ -91,65 +91,43 @@ Example:
 git clone git@github.com:myorg/horizonnetvpn.git app
 ```
 
-## 3) Clone and install app
+## 3) Clone repo
 
 ```bash
 mkdir -p /opt/horizonnetvpn
 cd /opt/horizonnetvpn
 git clone git@github.com:<OWNER>/<REPO>.git app
-cd app/amnezia/control_plane
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
+cd app/amnezia
+cp .env.prod.example .env.prod
 ```
 
-### 3.5) Start PostgreSQL for persistent clients storage
+Fill real values in `/opt/horizonnetvpn/app/amnezia/.env.prod`:
+
+- `POSTGRES_PASSWORD`
+- `ADMIN_AUTH_PASSWORD`
+- `WG_EASY_PASSWORD`
+- `WG_EASY_INIT_PASSWORD`
+- `WG_EASY_INIT_HOST` (your public server IP or DNS)
+
+## 4) Start full Docker stack (control-plane + postgres + wg-easy)
 
 ```bash
-cd /opt/horizonnetvpn/app/amnezia/control_plane
-docker compose -f docker-compose.postgres.yml up -d
-docker compose -f docker-compose.postgres.yml ps
+cd /opt/horizonnetvpn/app/amnezia
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 ```
 
-In `/opt/horizonnetvpn/app/amnezia/control_plane/.env` keep:
-
-```env
-DATABASE_URL=postgresql+psycopg://horizonnetvpn:horizonnetvpn@127.0.0.1:5432/horizonnetvpn
-```
-
-Quick check:
-
-```bash
-source .venv/bin/activate
-pytest
-uvicorn app.main:app --host 0.0.0.0 --port 8090
-```
-
-Open `http://SERVER_IP:8090` and confirm the frontend loads.
-
-## 4) Run as systemd service
-
-Готовый unit-файл лежит в репозитории: `amnezia/deploy/horizonnetvpn-control-plane.service` (слушает только `127.0.0.1:8090`).
-
-На сервере:
-
-```bash
-sudo cp /opt/horizonnetvpn/app/amnezia/deploy/horizonnetvpn-control-plane.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now horizonnetvpn-control-plane
-sudo systemctl status horizonnetvpn-control-plane
-```
-
-Проверка:
+Health checks:
 
 ```bash
 curl -sS http://127.0.0.1:8090/health
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs --tail=100 control-plane
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs --tail=100 wg-easy
 ```
 
-Дальше откройте админку через **nginx** (§5), а не напрямую порт 8090.
+## 5) Nginx reverse proxy (host)
 
-## 5) Nginx reverse proxy
+Nginx stays on host and proxies to `127.0.0.1:8090` (control-plane container).
 
 Create `/etc/nginx/sites-available/horizonnetvpn-control-plane`:
 
@@ -181,12 +159,9 @@ systemctl reload nginx
 ```bash
 cd /opt/horizonnetvpn/app
 git pull
-cd amnezia/control_plane
-source .venv/bin/activate
-pip install -r requirements.txt
-pytest
-systemctl restart horizonnetvpn-control-plane
-systemctl status horizonnetvpn-control-plane
+cd amnezia
+docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --build
+docker compose --env-file .env.prod -f docker-compose.prod.yml ps
 ```
 
 ## 7) Optional HTTPS

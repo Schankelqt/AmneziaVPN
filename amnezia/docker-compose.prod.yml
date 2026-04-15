@@ -1,0 +1,65 @@
+services:
+  control-plane:
+    build:
+      context: ./control_plane
+      dockerfile: Dockerfile
+    container_name: horizonnetvpn-control-plane
+    restart: unless-stopped
+    env_file:
+      - ./.env.prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+      wg-easy:
+        condition: service_started
+    ports:
+      - "127.0.0.1:8090:8090"
+
+  postgres:
+    image: postgres:16
+    container_name: horizonnetvpn-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  wg-easy:
+    image: ghcr.io/wg-easy/wg-easy:15
+    container_name: wg-easy
+    restart: unless-stopped
+    environment:
+      INSECURE: ${WG_EASY_INSECURE}
+      HOST: ${WG_EASY_UI_HOST}
+      PORT: ${WG_EASY_UI_PORT}
+      WG_PORT: ${WG_EASY_WG_PORT}
+      INIT_ENABLED: ${WG_EASY_INIT_ENABLED}
+      INIT_USERNAME: ${WG_EASY_INIT_USERNAME}
+      INIT_PASSWORD: ${WG_EASY_INIT_PASSWORD}
+      INIT_HOST: ${WG_EASY_INIT_HOST}
+      INIT_PORT: ${WG_EASY_INIT_PORT}
+    volumes:
+      - wg_easy_data:/etc/wireguard
+      - /lib/modules:/lib/modules:ro
+    ports:
+      - "${WG_EASY_WG_PORT:-51820}:${WG_EASY_WG_PORT:-51820}/udp"
+      - "127.0.0.1:${WG_EASY_UI_PORT:-51821}:${WG_EASY_UI_PORT:-51821}/tcp"
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+
+volumes:
+  postgres_data:
+  wg_easy_data:
