@@ -380,29 +380,37 @@ document.getElementById("refresh-btn").addEventListener("click", async () => {
   await refreshStats();
 });
 
-clientsFilterInput.addEventListener("input", () => {
-  renderClientRows();
-});
+if (clientsFilterInput) {
+  clientsFilterInput.addEventListener("input", () => {
+    renderClientRows();
+  });
+}
 
-document.getElementById("apply-traffic-filters-btn").addEventListener("click", async () => {
-  trafficFilters.scale = trafficScaleInput.value || "day";
-  trafficFilters.dateFrom = trafficDateFromInput.value || "";
-  trafficFilters.dateTo = trafficDateToInput.value || "";
-  trafficFilters.userIds = trafficUserIdsInput.value || "";
-  await refreshStats();
-});
+const applyTrafficBtn = document.getElementById("apply-traffic-filters-btn");
+if (applyTrafficBtn) {
+  applyTrafficBtn.addEventListener("click", async () => {
+    trafficFilters.scale = trafficScaleInput.value || "day";
+    trafficFilters.dateFrom = trafficDateFromInput.value || "";
+    trafficFilters.dateTo = trafficDateToInput.value || "";
+    trafficFilters.userIds = trafficUserIdsInput.value || "";
+    await refreshStats();
+  });
+}
 
-document.getElementById("reset-traffic-filters-btn").addEventListener("click", async () => {
-  trafficScaleInput.value = "day";
-  trafficDateFromInput.value = "";
-  trafficDateToInput.value = "";
-  trafficUserIdsInput.value = "";
-  trafficFilters.scale = "day";
-  trafficFilters.dateFrom = "";
-  trafficFilters.dateTo = "";
-  trafficFilters.userIds = "";
-  await refreshStats();
-});
+const resetTrafficBtn = document.getElementById("reset-traffic-filters-btn");
+if (resetTrafficBtn) {
+  resetTrafficBtn.addEventListener("click", async () => {
+    trafficScaleInput.value = "day";
+    trafficDateFromInput.value = "";
+    trafficDateToInput.value = "";
+    trafficUserIdsInput.value = "";
+    trafficFilters.scale = "day";
+    trafficFilters.dateFrom = "";
+    trafficFilters.dateTo = "";
+    trafficFilters.userIds = "";
+    await refreshStats();
+  });
+}
 
 document.getElementById("reboot-btn").addEventListener("click", async () => {
   const ok = window.confirm(
