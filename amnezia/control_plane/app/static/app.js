@@ -10,7 +10,6 @@ const metricTx = document.getElementById("metric-tx");
 const metricTotal = document.getElementById("metric-total");
 const backendTimeMoscow = document.getElementById("backend-time-moscow");
 const clientsFilterInput = document.getElementById("clients-filter");
-const clientsActiveFilter = document.getElementById("clients-active-filter");
 const trafficScaleInput = document.getElementById("traffic-scale");
 const trafficDateFromInput = document.getElementById("traffic-date-from");
 const trafficDateToInput = document.getElementById("traffic-date-to");
@@ -239,14 +238,7 @@ async function refreshStats() {
 function renderClientRows() {
   clientsBody.innerHTML = "";
   const textFilter = clientsFilterInput.value.trim().toLowerCase();
-  const activeMode = clientsActiveFilter.value;
   const filtered = allClients.filter((c) => {
-    if (activeMode === "active" && !c.active) {
-      return false;
-    }
-    if (activeMode === "revoked" && c.active) {
-      return false;
-    }
     if (!textFilter) {
       return true;
     }
@@ -388,10 +380,6 @@ document.getElementById("refresh-btn").addEventListener("click", async () => {
 });
 
 clientsFilterInput.addEventListener("input", () => {
-  renderClientRows();
-});
-
-clientsActiveFilter.addEventListener("change", () => {
   renderClientRows();
 });
 

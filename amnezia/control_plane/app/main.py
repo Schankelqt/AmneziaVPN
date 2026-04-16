@@ -468,7 +468,12 @@ def frontend() -> FileResponse:
 
 @app.get("/v1/clients", response_model=list[ClientResponse])
 def list_clients(db: Session = Depends(get_db)) -> list[ClientResponse]:
-    records = db.query(ClientRecord).order_by(ClientRecord.expires_at.desc()).all()
+    records = (
+        db.query(ClientRecord)
+        .filter(ClientRecord.active.is_(True))
+        .order_by(ClientRecord.expires_at.desc())
+        .all()
+    )
     return [_build_response(item) for item in records]
 
 
