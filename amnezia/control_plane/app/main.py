@@ -524,43 +524,29 @@ def traffic_stats(
             )
         series = _build_series_from_samples(start, end, bucket, sample_dicts)
 
-        per_user_map: dict[int, dict] = {}
-        for row in sample_dicts:
-            uid = int(row.get("telegram_user_id") or 0)
-            if uid <= 0:
-                continue
-            current = per_user_map.get(uid)
-            if current is None:
-                current = {
-                    "telegram_user_id": uid,
-                    "user_name": None,
-                    "rx_bytes": 0,
-                    "tx_bytes": 0,
-                    "total_bytes": 0,
-                    "client_id": None,
-                    "active": False,
-                    "expires_at": None,
-                }
-                per_user_map[uid] = current
-            current["rx_bytes"] += int(row.get("delta_rx") or 0)
-            current["tx_bytes"] += int(row.get("delta_tx") or 0)
-            current["total_bytes"] += int(row.get("delta_rx") or 0) + int(row.get("delta_tx") or 0)
-
-        record_map = {item.telegram_user_id: item for item in records}
         per_user = []
-        for uid, agg in per_user_map.items():
-            record = record_map.get(uid)
-            if record:
-                agg["active"] = record.active
-                agg["expires_at"] = _to_moscow(record.expires_at)
-                agg["client_id"] = record.client_id
-                if not agg.get("user_name"):
-                    agg["user_name"] = record.user_name
-            per_user.append(agg)
+        total_rx = 0
+        total_tx = 0
+        for record in records:
+            traffic = snapshot.get(record.provider_ref) or snapshot.get(str(record.provider_ref)) or {}
+            rx = int(traffic.get("rx_bytes") or 0)
+            tx = int(traffic.get("tx_bytes") or 0)
+            total_rx += rx
+            total_tx += tx
+            per_user.append(
+                {
+                    "telegram_user_id": record.telegram_user_id,
+                    "user_name": record.user_name,
+                    "rx_bytes": rx,
+                    "tx_bytes": tx,
+                    "total_bytes": rx + tx,
+                    "client_id": record.client_id,
+                    "active": record.active,
+                    "expires_at": _to_moscow(record.expires_at),
+                }
+            )
 
         per_user.sort(key=lambda user: int(user["total_bytes"]), reverse=True)
-        total_rx = sum(int(item["rx_bytes"]) for item in per_user)
-        total_tx = sum(int(item["tx_bytes"]) for item in per_user)
         available_users = [
             {
                 "telegram_user_id": item.telegram_user_id,

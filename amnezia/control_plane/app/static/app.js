@@ -93,7 +93,9 @@ function formatDateTimeMoscow(value) {
 }
 
 function renderCharts(stats) {
-  const labels = stats.series_24h.map((point) => {
+  const series = Array.isArray(stats.series_24h) ? stats.series_24h : [];
+  const users = Array.isArray(stats.per_user) ? stats.per_user.slice(0, 10) : [];
+  const labels = series.map((point) => {
     const date = new Date(point.ts);
     if (Number.isNaN(date.getTime())) {
       return String(point.ts);
@@ -102,9 +104,8 @@ function renderCharts(stats) {
       ? date.toLocaleTimeString("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit" })
       : date.toLocaleDateString("ru-RU", { timeZone: "Europe/Moscow", day: "2-digit", month: "2-digit" });
   });
-  const rxData = stats.series_24h.map((point) => point.rx_bytes);
-  const txData = stats.series_24h.map((point) => point.tx_bytes);
-  const users = stats.per_user.slice(0, 10);
+  const rxData = series.map((point) => point.rx_bytes);
+  const txData = series.map((point) => point.tx_bytes);
   const userLabels = users.map((item) => item.user_name || String(item.telegram_user_id));
   const userTotals = users.map((item) => item.total_bytes);
 
