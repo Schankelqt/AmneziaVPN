@@ -56,11 +56,11 @@
   {% if purchases %}
     {% for p in purchases %}
     <div class="purchase">
-      <p><strong>Дата:</strong> {{ p.created_at }}</p>
+      <p><strong>Дата:</strong> {{ p.created_at|short_dt }}</p>
       <p><strong>Протокол:</strong> {{ p.protocol or "wireguard" }}</p>
       <p><strong>Тариф:</strong> {{ p.plan_days }} дней, {{ p.amount_rub }} ₽</p>
       <p><strong>Статус:</strong> {{ p.status }}</p>
-      <p><strong>Истекает:</strong> {{ p.expires_at or "—" }}</p>
+      <p><strong>Истекает:</strong> {{ p.expires_at|short_dt }}</p>
       {% if p.config %}
       <details>
         <summary>Показать VPN ключ (config)</summary>
@@ -84,19 +84,19 @@
     <strong>Поддержка</strong>
     <button id="support-widget-close" class="support-widget-close" type="button" aria-label="Закрыть">✕</button>
   </div>
-  <div class="support-widget-body">
+  <div id="support-widget-body" class="support-widget-body">
     {% if support_messages %}
       {% for m in support_messages %}
       <div class="support-message {% if m.direction == 'out' %}support-message-out{% else %}support-message-in{% endif %}">
         <p><strong>{% if m.direction == "out" %}Вы{% else %}Поддержка{% endif %}:</strong> {{ m.body }}</p>
-        <p class="support-message-time">{{ m.created_at }}</p>
+        <p class="support-message-time">{{ m.created_at|short_dt }}</p>
       </div>
       {% endfor %}
     {% else %}
       <p>Сообщений пока нет.</p>
     {% endif %}
   </div>
-  <form method="post" action="/account/support" class="stack support-widget-form">
+  <form id="support-widget-form" method="post" action="/account/support" class="stack support-widget-form">
     <textarea id="support-message" name="message" class="input" rows="3" placeholder="Ваш вопрос в поддержку"></textarea>
     <button class="btn" type="submit">Отправить</button>
   </form>
@@ -108,7 +108,9 @@
     var fab = document.getElementById("support-fab");
     var widget = document.getElementById("support-widget");
     var closeBtn = document.getElementById("support-widget-close");
-    if (!fab || !widget || !closeBtn) return;
+    var form = document.getElementById("support-widget-form");
+    var list = document.getElementById("support-widget-body");
+    if (!fab || !widget || !closeBtn || !form || !list) return;
 
     function setOpen(open) {
       widget.classList.toggle("support-widget-open", open);
@@ -121,6 +123,69 @@
     });
     closeBtn.addEventListener("click", function () {
       setOpen(false);
+    });
+
+    function fmtDate(raw) {
+      if (!raw) return "—";
+      var d = new Date(raw);
+      if (isNaN(d.getTime())) return raw;
+      var dd = String(d.getDate()).padStart(2, "0");
+      var mm = String(d.getMonth() + 1).padStart(2, "0");
+      var hh = String(d.getHours()).padStart(2, "0");
+      var mi = String(d.getMinutes()).padStart(2, "0");
+      return dd + "." + mm + " " + hh + ":" + mi;
+    }
+
+    function renderMessages(messages) {
+      if (!messages || !messages.length) {
+        list.innerHTML = "<p>Сообщений пока нет.</p>";
+        return;
+      }
+      list.innerHTML = "";
+      messages.forEach(function (m) {
+        var item = document.createElement("div");
+        item.className = "support-message " + (m.direction === "out" ? "support-message-out" : "support-message-in");
+        var who = m.direction === "out" ? "Вы" : "Поддержка";
+        var pBody = document.createElement("p");
+        var strong = document.createElement("strong");
+        strong.textContent = who + ":";
+        pBody.appendChild(strong);
+        pBody.appendChild(document.createTextNode(" " + (m.body || "")));
+        var pTime = document.createElement("p");
+        pTime.className = "support-message-time";
+        pTime.textContent = fmtDate(m.created_at);
+        item.appendChild(pBody);
+        item.appendChild(pTime);
+        list.appendChild(item);
+      });
+    }
+
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      setOpen(true);
+      var submitBtn = form.querySelector("button[type='submit']");
+      var textArea = form.querySelector("textarea[name='message']");
+      if (!textArea) return;
+      if (submitBtn) submitBtn.disabled = true;
+      try {
+        var resp = await fetch(form.action, {
+          method: "POST",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+          body: new FormData(form)
+        });
+        var data = await resp.json();
+        if (data.support_messages) renderMessages(data.support_messages);
+        if (data.ok) {
+          form.reset();
+          if (window.siteToast) window.siteToast(data.message || "Сообщение отправлено", "ok");
+        } else {
+          if (window.siteToast) window.siteToast(data.message || "Ошибка отправки сообщения", "error");
+        }
+      } catch (err) {
+        if (window.siteToast) window.siteToast("Не удалось отправить сообщение. Проверьте соединение.", "error");
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
     });
   })();
 </script>

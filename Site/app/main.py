@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import FastAPI, Form, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -30,6 +30,16 @@ app.add_middleware(
     https_only=False,
 )
 init_db()
+
+
+def _fmt_short_dt(value: str | None) -> str:
+    dt = _parse_iso(value)
+    if dt is None:
+        return "—"
+    return dt.strftime("%d.%m %H:%M")
+
+
+templates.env.filters["short_dt"] = _fmt_short_dt
 
 
 def _env(name: str, default: str = "") -> str:
@@ -86,6 +96,10 @@ def _set_flash(request: Request, *, err: str | None = None, ok: str | None = Non
         request.session["flash_error"] = err
     if ok:
         request.session["flash_ok"] = ok
+
+
+def _is_ajax(request: Request) -> bool:
+    return request.headers.get("x-requested-with", "").lower() == "xmlhttprequest"
 
 
 def _bot_api_headers() -> dict[str, str]:
@@ -455,9 +469,7 @@ async def account(request: Request):
     purchases = conn.execute(
         "SELECT * FROM purchases WHERE user_id = ? ORDER BY id DESC LIMIT 20", (user["id"],)
     ).fetchall()
-    support_messages = conn.execute(
-        "SELECT * FROM support_messages WHERE user_id = ? ORDER BY id DESC LIMIT 30", (user["id"],)
-    ).fetchall()
+    support_messages = _load_support_messages(user["id"])
     return templates.TemplateResponse(
         request=request,
         name="account.html",
@@ -472,18 +484,30 @@ async def account(request: Request):
     )
 
 
+def _load_support_messages(user_id: int):
+    return conn.execute(
+        "SELECT * FROM support_messages WHERE user_id = ? ORDER BY id DESC LIMIT 30", (user_id,)
+    ).fetchall()
+
+
 @app.post("/account/support")
 async def account_support_send(request: Request, message: str = Form(...)):
     uid = request.session.get("uid")
     if not uid:
+        if _is_ajax(request):
+            return JSONResponse({"ok": False, "error": "auth_required"}, status_code=401)
         return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
     user = conn.execute("SELECT * FROM users WHERE id = ?", (int(uid),)).fetchone()
     if not user:
         request.session.clear()
+        if _is_ajax(request):
+            return JSONResponse({"ok": False, "error": "auth_required"}, status_code=401)
         return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 
     body = " ".join((message or "").split()).strip()
     if len(body) < 5:
+        if _is_ajax(request):
+            return JSONResponse({"ok": False, "error": "message_too_short", "message": "Сообщение слишком короткое."}, status_code=400)
         _set_flash(request, err="Сообщение слишком короткое.")
         return RedirectResponse(url="/account", status_code=status.HTTP_303_SEE_OTHER)
 
@@ -493,13 +517,32 @@ async def account_support_send(request: Request, message: str = Form(...)):
         (user["id"], "out", body, tg_message_id, now_iso()),
     )
     conn.commit()
+    status_text = "Сообщение отправлено в поддержку."
     if tg_message_id is None:
-        _set_flash(
-            request,
-            err="Сообщение сохранено, но не отправлено в Telegram. Проверьте SITE_SUPPORT_CHAT_ID и токен.",
-        )
+        status_text = "Сообщение сохранено, но не отправлено в Telegram. Проверьте SITE_SUPPORT_CHAT_ID и токен."
+        if _is_ajax(request):
+            messages = _load_support_messages(user["id"])
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": "telegram_delivery_failed",
+                    "message": status_text,
+                    "support_messages": [dict(row) for row in messages],
+                },
+                status_code=502,
+            )
+        _set_flash(request, err=status_text)
     else:
-        _set_flash(request, ok="Сообщение отправлено в поддержку.")
+        if _is_ajax(request):
+            messages = _load_support_messages(user["id"])
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "message": status_text,
+                    "support_messages": [dict(row) for row in messages],
+                }
+            )
+        _set_flash(request, ok=status_text)
     return RedirectResponse(url="/account", status_code=status.HTTP_303_SEE_OTHER)
 
 

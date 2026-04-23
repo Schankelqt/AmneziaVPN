@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}HorizonNetVPN{% endblock %}</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260423b">
+  <link rel="stylesheet" href="/static/app.css?v=20260423c">
 </head>
 <body>
   <header class="header">
@@ -27,12 +27,6 @@
   </header>
 
   <main class="wrap">
-    {% if flash_error %}
-    <div class="flash flash-error">{{ flash_error }}</div>
-    {% endif %}
-    {% if flash_ok %}
-    <div class="flash flash-ok">{{ flash_ok }}</div>
-    {% endif %}
     {% block content %}{% endblock %}
   </main>
 
@@ -42,5 +36,29 @@
       <span>Поддержка: <a href="{{ support_url }}" target="_blank" rel="noopener">{{ support_tg }}</a></span>
     </div>
   </footer>
+  <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
+  <script>
+    (function () {
+      var root = document.getElementById("toast-root");
+      if (!root) return;
+
+      function showToast(message, kind) {
+        if (!message) return;
+        var toast = document.createElement("div");
+        toast.className = "toast " + (kind === "ok" ? "toast-ok" : "toast-error");
+        toast.textContent = message;
+        root.appendChild(toast);
+        setTimeout(function () { toast.classList.add("toast-visible"); }, 10);
+        setTimeout(function () {
+          toast.classList.remove("toast-visible");
+          setTimeout(function () { toast.remove(); }, 200);
+        }, 3600);
+      }
+
+      window.siteToast = showToast;
+      {% if flash_error %}showToast({{ flash_error|tojson }}, "error");{% endif %}
+      {% if flash_ok %}showToast({{ flash_ok|tojson }}, "ok");{% endif %}
+    })();
+  </script>
 </body>
 </html>

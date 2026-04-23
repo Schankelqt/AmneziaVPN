@@ -278,6 +278,41 @@ button.support-widget-close:hover {
   font-size: 13px;
 }
 
+.toast-root {
+  position: fixed;
+  right: 16px;
+  top: 16px;
+  display: grid;
+  gap: 10px;
+  z-index: 200;
+  max-width: min(420px, calc(100vw - 24px));
+}
+
+.toast {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  border-radius: 10px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  box-shadow: 0 10px 24px rgba(3, 8, 18, 0.55);
+}
+
+.toast-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast-error {
+  background: #48202a;
+  border-color: #7f3444;
+}
+
+.toast-ok {
+  background: #1f3d2d;
+  border-color: #346b4c;
+}
+
 @media (max-width: 600px) {
   .support-widget {
     right: 12px;
