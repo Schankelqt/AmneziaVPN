@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Тарифы - HorizonNetVPN{% endblock %}
+{% block content %}
+<h1>Тарифы</h1>
+<div class="grid3">
+  <article class="card">
+    <h3>1 месяц</h3>
+    <p class="price">{{ price_month }} ₽</p>
+    <a class="btn" href="/account">Выбрать</a>
+  </article>
+  <article class="card">
+    <h3>3 месяца</h3>
+    <p class="price">{{ price_quarter }} ₽</p>
+    <a class="btn" href="/account">Выбрать</a>
+  </article>
+  <article class="card">
+    <h3>12 месяцев</h3>
+    <p class="price">{{ price_year }} ₽</p>
+    <a class="btn" href="/account">Выбрать</a>
+  </article>
+</div>
+{% endblock %}

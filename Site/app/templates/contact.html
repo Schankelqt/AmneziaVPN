@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Контакты - HorizonNetVPN{% endblock %}
+{% block content %}
+<h1>Контакты</h1>
+<div class="card stack">
+  <p>Основной канал продаж и управления подпиской: Telegram-бот.</p>
+  <p><a class="btn" href="{{ bot_url }}">Открыть бота</a></p>
+  <p>Техподдержка: {{ support_tg }}</p>
+  <p>Панель администратора доступна только по домену: {{ admin_domain }}</p>
+</div>
+{% endblock %}

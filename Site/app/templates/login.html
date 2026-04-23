@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Вход - HorizonNetVPN{% endblock %}
+{% block content %}
+<h1>Вход</h1>
+<div class="card stack">
+  <form method="post" action="/login" class="stack">
+    <label>Логин</label>
+    <input class="input" type="text" name="login" required>
+    <label>Пароль</label>
+    <input class="input" type="password" name="password" required>
+    <button class="btn" type="submit">Войти</button>
+  </form>
+
+  {% if google_enabled %}
+  <a class="btn btn-light" href="/auth/google">Войти через Google</a>
+  {% endif %}
+
+  {% if tg_login_enabled %}
+  <div>
+    <p>Вход через Telegram (опционально):</p>
+    <script async src="https://telegram.org/js/telegram-widget.js?22"
+            data-telegram-login="{{ bot_username }}"
+            data-size="large"
+            data-auth-url="/auth/telegram"
+            data-request-access="write"></script>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

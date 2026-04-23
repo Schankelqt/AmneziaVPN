@@ -109,6 +109,8 @@ Fill real values in `/opt/horizonnetvpn/app/amnezia/.env.prod`:
 - `WG_EASY_PASSWORD`
 - `WG_EASY_INIT_PASSWORD`
 - `WG_EASY_INIT_HOST` (your public server IP or DNS)
+- `SITE_SESSION_SECRET` (long random string for website sessions)
+- `SITE_PUBLIC_BASE_URL` (e.g. `https://horizonnetvpn.ru`)
 
 Important for Docker mode:
 
@@ -116,7 +118,36 @@ Important for Docker mode:
 - `control-plane` connects to Postgres via Docker service name `postgres`.
 - The compose file injects the correct `DATABASE_URL` automatically.
 
-## 4) Start full Docker stack (control-plane + postgres + wg-easy)
+Optional auth providers for website:
+
+- Google OAuth:
+  - `GOOGLE_CLIENT_ID`
+  - `GOOGLE_CLIENT_SECRET`
+- Telegram login widget:
+  - `SITE_TELEGRAM_LOGIN_ENABLED=true`
+  - `SITE_BOT_TOKEN=<telegram_bot_token>`
+  - `SITE_TELEGRAM_LOGIN_MAX_AGE_SECONDS=600`
+
+VLESS on website uses the same 3x-ui model as Telegram bot:
+
+- `XUI_BASE_URL`
+- `XUI_USERNAME`
+- `XUI_PASSWORD`
+- `XUI_INBOUND_ID_REALITY`
+- `VLESS_REALITY_SERVER_NAME`
+- `VLESS_REALITY_PORT`
+- `VLESS_REALITY_PUBLIC_KEY`
+- `VLESS_REALITY_SHORT_ID`
+- `VLESS_REALITY_SNI`
+- `VLESS_REALITY_FINGERPRINT`
+
+External Telegram bot integration with WireGuard control-plane:
+
+- in bot `.env` set `WG_ENABLED=true`
+- set `WG_CP_BASE_URL=https://admin.horizonnetvpn.ru`
+- set `WG_CP_BOT_API_TOKEN` equal to `BOT_API_TOKEN` from `amnezia/.env.prod`
+
+## 4) Start full Docker stack (site + control-plane + postgres + wg-easy)
 
 ```bash
 cd /opt/horizonnetvpn/app/amnezia
@@ -128,20 +159,42 @@ Health checks:
 
 ```bash
 curl -sS http://127.0.0.1:8090/health
+curl -sS http://127.0.0.1:8088/health
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs --tail=100 control-plane
+docker compose --env-file .env.prod -f docker-compose.prod.yml logs --tail=100 site
 docker compose --env-file .env.prod -f docker-compose.prod.yml logs --tail=100 wg-easy
 ```
 
 ## 5) Nginx reverse proxy (host)
 
-Nginx stays on host and proxies to `127.0.0.1:8090` (control-plane container).
+Nginx stays on host and splits traffic:
 
-Create `/etc/nginx/sites-available/horizonnetvpn-control-plane`:
+- `horizonnetvpn.ru` / `www.horizonnetvpn.ru` -> `127.0.0.1:8088` (public customer site)
+- `admin.horizonnetvpn.ru` -> `127.0.0.1:8090` (control-plane admin/API)
+
+Use the ready template from repo:
+
+- `deploy/nginx.horizonnetvpn.conf`
+
+Create `/etc/nginx/sites-available/horizonnetvpn`:
 
 ```nginx
 server {
     listen 80;
-    server_name <YOUR_DOMAIN_OR_IP>;
+    server_name horizonnetvpn.ru www.horizonnetvpn.ru;
+
+    location / {
+        proxy_pass http://127.0.0.1:8088;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name admin.horizonnetvpn.ru;
 
     location / {
         proxy_pass http://127.0.0.1:8090;
@@ -156,7 +209,7 @@ server {
 Enable and reload:
 
 ```bash
-ln -s /etc/nginx/sites-available/horizonnetvpn-control-plane /etc/nginx/sites-enabled/horizonnetvpn-control-plane
+ln -s /etc/nginx/sites-available/horizonnetvpn /etc/nginx/sites-enabled/horizonnetvpn
 nginx -t
 systemctl reload nginx
 ```
@@ -177,5 +230,27 @@ After domain points to your VPS:
 
 ```bash
 apt install -y certbot python3-certbot-nginx
-certbot --nginx -d <YOUR_DOMAIN>
+certbot --nginx -d horizonnetvpn.ru -d www.horizonnetvpn.ru -d admin.horizonnetvpn.ru
+```
+
+## 8) Cutover without downtime
+
+1. Deploy Docker stack first (`docker compose ... up -d --build`) and verify both local health endpoints.
+2. Keep old nginx mapping active while validating site on loopback:
+   - `curl -H "Host: horizonnetvpn.ru" http://127.0.0.1:8088/`
+   - `curl -H "Host: admin.horizonnetvpn.ru" http://127.0.0.1:8090/health`
+3. Update `/etc/nginx/sites-available/horizonnetvpn` with both server blocks above.
+4. Run `nginx -t` and `systemctl reload nginx`.
+5. Smoke test after switch:
+   - `https://horizonnetvpn.ru/` serves customer website.
+   - `https://horizonnetvpn.ru/register` and `/login` work.
+   - website account can buy/renew and receives VPN key in `/account`.
+   - `https://admin.horizonnetvpn.ru/admin` opens admin UI.
+   - Telegram bot still calls `https://admin.horizonnetvpn.ru/v1/bot/*` with `BOT_API_TOKEN`.
+
+Optional helper script:
+
+```bash
+cd /opt/horizonnetvpn/app/amnezia
+PUBLIC_DOMAIN=horizonnetvpn.ru ADMIN_DOMAIN=admin.horizonnetvpn.ru BOT_API_TOKEN=<token> ./deploy/cutover_smoke_checks.sh
 ```

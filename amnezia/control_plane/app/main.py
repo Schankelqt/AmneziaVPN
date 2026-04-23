@@ -44,6 +44,22 @@ def _env_bool(name: str, default: bool) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _host_without_port(host: str | None) -> str:
+    if not host:
+        return ""
+    return host.split(":")[0].strip().lower()
+
+
+def _csv_env_set(name: str) -> set[str]:
+    raw = os.environ.get(name, "")
+    result: set[str] = set()
+    for item in raw.split(","):
+        val = _host_without_port(item)
+        if val:
+            result.add(val)
+    return result
+
+
 def _build_provider() -> tuple[str, VpnProvider]:
     provider_name = os.environ.get("VPN_PROVIDER", "mock").strip().lower()
     if provider_name == "mock":
@@ -133,6 +149,28 @@ async def enforce_admin_site_auth(request: Request, call_next):
             headers={"WWW-Authenticate": 'Basic realm="HorizonNetVPN Admin"'},
         )
     return await call_next(request)
+
+
+@app.middleware("http")
+async def enforce_admin_domain(request: Request, call_next):
+    """
+    Keep admin UI/API off the public customer domain.
+    Bot API and health endpoints stay reachable as service endpoints.
+    """
+    path = request.url.path
+    if path == "/health" or path.startswith("/v1/bot/"):
+        return await call_next(request)
+
+    # If not configured, keep backwards-compatible behavior.
+    admin_hosts = _csv_env_set("ADMIN_ALLOWED_HOSTS")
+    if not admin_hosts:
+        return await call_next(request)
+
+    host = _host_without_port(request.headers.get("host"))
+    if host in admin_hosts:
+        return await call_next(request)
+
+    return Response(status_code=404, content="Not Found")
 
 
 def _build_response(client: ClientRecord) -> ClientResponse:
@@ -461,9 +499,18 @@ def admin_reboot(_auth=Depends(require_admin_basic)) -> dict[str, str | int]:
     }
 
 
-@app.get("/")
+@app.get("/admin")
 def frontend() -> FileResponse:
     return FileResponse(static_dir / "index.html")
+
+
+@app.get("/")
+def root() -> dict[str, str]:
+    return {
+        "service": "horizonnetvpn-control-plane",
+        "admin_ui": "/admin",
+        "health": "/health",
+    }
 
 
 @app.get("/v1/clients", response_model=list[ClientResponse])

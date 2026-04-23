@@ -5,7 +5,7 @@ This document describes the HTTP API of `amnezia/control_plane` (FastAPI), inclu
 ## Base URL
 
 - Local/container: `http://127.0.0.1:8090`
-- Public access is usually through host nginx reverse proxy.
+- Public admin/API access through reverse proxy: `https://admin.horizonnetvpn.ru`
 
 ## Authentication
 
@@ -105,7 +105,7 @@ There are two auth modes:
 
 ## Admin UI Endpoint
 
-### `GET /`
+### `GET /admin`
 
 - Returns static admin UI page.
 - Auth: admin basic (if configured).

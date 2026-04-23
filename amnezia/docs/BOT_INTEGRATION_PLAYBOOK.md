@@ -14,7 +14,7 @@ Authorization: Bearer <BOT_API_TOKEN>
 
 - Base URL example:
   - Internal: `http://127.0.0.1:8090`
-  - Through domain/reverse proxy: `https://horizonnetvpn.ru`
+  - Through domain/reverse proxy: `https://admin.horizonnetvpn.ru`
 
 ## 2) Core Endpoint Set
 

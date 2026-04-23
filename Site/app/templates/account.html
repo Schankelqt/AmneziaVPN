@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Личный кабинет - HorizonNetVPN{% endblock %}
+{% block content %}
+<h1>Личный кабинет</h1>
+<div class="card stack">
+  <p><strong>ID пользователя:</strong> {{ user.public_id }}</p>
+  <p><strong>Логин:</strong> {{ user.login or "—" }}</p>
+  <p><strong>Email:</strong> {{ user.email or "—" }}</p>
+  {% if user.pending_revoke_protocol and user.pending_revoke_at %}
+  <p><strong>Переключение протокола:</strong> старый {{ user.pending_revoke_protocol }} будет отключен после {{ user.pending_revoke_at }}.</p>
+  {% endif %}
+</div>
+
+<h2>Купить или продлить VPN</h2>
+<div class="grid3">
+  <form method="post" action="/account/buy" class="card stack">
+    <h3>1 месяц</h3>
+    <p class="price">{{ price_month }} ₽</p>
+    <label>Протокол</label>
+    <select class="input" name="protocol">
+      {% for proto in supported_protocols %}
+      <option value="{{ proto }}" {% if default_protocol == proto %}selected{% endif %}>{{ proto }}</option>
+      {% endfor %}
+    </select>
+    <input type="hidden" name="plan" value="month">
+    <button class="btn" type="submit">Оплатить и выдать ключ</button>
+  </form>
+  <form method="post" action="/account/buy" class="card stack">
+    <h3>3 месяца</h3>
+    <p class="price">{{ price_quarter }} ₽</p>
+    <label>Протокол</label>
+    <select class="input" name="protocol">
+      {% for proto in supported_protocols %}
+      <option value="{{ proto }}" {% if default_protocol == proto %}selected{% endif %}>{{ proto }}</option>
+      {% endfor %}
+    </select>
+    <input type="hidden" name="plan" value="quarter">
+    <button class="btn" type="submit">Оплатить и продлить</button>
+  </form>
+  <form method="post" action="/account/buy" class="card stack">
+    <h3>12 месяцев</h3>
+    <p class="price">{{ price_year }} ₽</p>
+    <label>Протокол</label>
+    <select class="input" name="protocol">
+      {% for proto in supported_protocols %}
+      <option value="{{ proto }}" {% if default_protocol == proto %}selected{% endif %}>{{ proto }}</option>
+      {% endfor %}
+    </select>
+    <input type="hidden" name="plan" value="year">
+    <button class="btn" type="submit">Оплатить и продлить</button>
+  </form>
+</div>
+
+<h2>История и текущий ключ</h2>
+<div class="card stack">
+  {% if purchases %}
+    {% for p in purchases %}
+    <div class="purchase">
+      <p><strong>Дата:</strong> {{ p.created_at }}</p>
+      <p><strong>Протокол:</strong> {{ p.protocol or "wireguard" }}</p>
+      <p><strong>Тариф:</strong> {{ p.plan_days }} дней, {{ p.amount_rub }} ₽</p>
+      <p><strong>Статус:</strong> {{ p.status }}</p>
+      <p><strong>Истекает:</strong> {{ p.expires_at or "—" }}</p>
+      {% if p.config %}
+      <details>
+        <summary>Показать VPN ключ (config)</summary>
+        <pre>{{ p.config }}</pre>
+      </details>
+      {% endif %}
+    </div>
+    <hr>
+    {% endfor %}
+  {% else %}
+    <p>Покупок пока нет.</p>
+  {% endif %}
+</div>
+{% endblock %}

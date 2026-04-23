@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}HorizonNetVPN{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="header">
+    <div class="wrap header-row">
+      <a class="logo" href="/">HorizonNetVPN</a>
+      <nav class="menu">
+        <a href="/pricing">Тарифы</a>
+        <a href="/faq">FAQ</a>
+        <a href="/contact">Контакты</a>
+        {% if logged_in %}
+        <a href="/account">Личный кабинет</a>
+        <a href="/logout">Выйти</a>
+        {% else %}
+        <a href="/login">Войти</a>
+        <a href="/register">Регистрация</a>
+        {% endif %}
+        <a class="btn btn-light" href="/account">Купить VPN</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    {% if flash_error %}
+    <div class="flash flash-error">{{ flash_error }}</div>
+    {% endif %}
+    {% if flash_ok %}
+    <div class="flash flash-ok">{{ flash_ok }}</div>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-row">
+      <span>{{ domain }}</span>
+      <span>Поддержка: {{ support_tg }}</span>
+      <span>Админка: {{ admin_domain }}</span>
+    </div>
+  </footer>
+</body>
+</html>

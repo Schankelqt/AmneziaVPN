@@ -1,4 +1,45 @@
 services:
+  site:
+    build:
+      context: ../Site
+      dockerfile: Dockerfile
+    container_name: horizonnetvpn-site
+    restart: unless-stopped
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN}
+      SITE_PUBLIC_BASE_URL: ${SITE_PUBLIC_BASE_URL}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN}
+      SITE_BOT_URL: ${SITE_BOT_URL}
+      SITE_BOT_USERNAME: ${SITE_BOT_USERNAME}
+      SITE_SUPPORT_TG: ${SITE_SUPPORT_TG}
+      SITE_PRICE_MONTH: ${SITE_PRICE_MONTH}
+      SITE_PRICE_QUARTER: ${SITE_PRICE_QUARTER}
+      SITE_PRICE_YEAR: ${SITE_PRICE_YEAR}
+      SITE_SESSION_SECRET: ${SITE_SESSION_SECRET}
+      CONTROL_PLANE_INTERNAL_URL: http://control-plane:8090
+      SITE_BOT_API_TOKEN: ${BOT_API_TOKEN}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      SITE_TELEGRAM_LOGIN_ENABLED: ${SITE_TELEGRAM_LOGIN_ENABLED}
+      SITE_BOT_TOKEN: ${SITE_BOT_TOKEN}
+      SITE_TELEGRAM_LOGIN_MAX_AGE_SECONDS: ${SITE_TELEGRAM_LOGIN_MAX_AGE_SECONDS}
+      XUI_BASE_URL: ${XUI_BASE_URL}
+      XUI_USERNAME: ${XUI_USERNAME}
+      XUI_PASSWORD: ${XUI_PASSWORD}
+      XUI_INBOUND_ID_REALITY: ${XUI_INBOUND_ID_REALITY}
+      VLESS_REALITY_SERVER_NAME: ${VLESS_REALITY_SERVER_NAME}
+      VLESS_REALITY_PORT: ${VLESS_REALITY_PORT}
+      VLESS_REALITY_PUBLIC_KEY: ${VLESS_REALITY_PUBLIC_KEY}
+      VLESS_REALITY_SHORT_ID: ${VLESS_REALITY_SHORT_ID}
+      VLESS_REALITY_SNI: ${VLESS_REALITY_SNI}
+      VLESS_REALITY_FINGERPRINT: ${VLESS_REALITY_FINGERPRINT}
+      SITE_DB_PATH: /app/data/site.db
+      TZ: Europe/Moscow
+    volumes:
+      - site_data:/app/data
+    ports:
+      - "127.0.0.1:8088:8080"
+
   control-plane:
     build:
       context: ./control_plane
@@ -11,6 +52,7 @@ services:
       # Inside Docker network, Postgres is reachable by service name.
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       WG_EASY_BASE_URL: http://wg-easy:${WG_EASY_UI_PORT:-51821}
+      ADMIN_ALLOWED_HOSTS: ${ADMIN_ALLOWED_HOSTS}
       TZ: Europe/Moscow
     depends_on:
       postgres:
@@ -70,3 +112,4 @@ services:
 volumes:
   postgres_data:
   wg_easy_data:
+  site_data:
