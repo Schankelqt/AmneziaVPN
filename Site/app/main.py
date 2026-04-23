@@ -188,22 +188,22 @@ def _plan_price(plan_days: int) -> int:
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    return templates.TemplateResponse("index.html", _ctx(request))
+    return templates.TemplateResponse(request=request, name="index.html", context=_ctx(request))
 
 
 @app.get("/pricing", response_class=HTMLResponse)
 def pricing(request: Request):
-    return templates.TemplateResponse("pricing.html", _ctx(request))
+    return templates.TemplateResponse(request=request, name="pricing.html", context=_ctx(request))
 
 
 @app.get("/faq", response_class=HTMLResponse)
 def faq(request: Request):
-    return templates.TemplateResponse("faq.html", _ctx(request))
+    return templates.TemplateResponse(request=request, name="faq.html", context=_ctx(request))
 
 
 @app.get("/contact", response_class=HTMLResponse)
 def contact(request: Request):
-    return templates.TemplateResponse("contact.html", _ctx(request))
+    return templates.TemplateResponse(request=request, name="contact.html", context=_ctx(request))
 
 
 @app.get("/buy")
@@ -215,7 +215,7 @@ def buy() -> RedirectResponse:
 def register_get(request: Request):
     if request.session.get("uid"):
         return RedirectResponse(url="/account", status_code=status.HTTP_303_SEE_OTHER)
-    return templates.TemplateResponse("register.html", _ctx(request))
+    return templates.TemplateResponse(request=request, name="register.html", context=_ctx(request))
 
 
 @app.post("/register")
@@ -251,7 +251,7 @@ def register_post(
 def login_get(request: Request):
     if request.session.get("uid"):
         return RedirectResponse(url="/account", status_code=status.HTTP_303_SEE_OTHER)
-    return templates.TemplateResponse("login.html", _ctx(request))
+    return templates.TemplateResponse(request=request, name="login.html", context=_ctx(request))
 
 
 @app.post("/login")
@@ -411,8 +411,9 @@ async def account(request: Request):
         "SELECT * FROM purchases WHERE user_id = ? ORDER BY id DESC LIMIT 20", (user["id"],)
     ).fetchall()
     return templates.TemplateResponse(
-        "account.html",
-        _ctx(
+        request=request,
+        name="account.html",
+        context=_ctx(
             request,
             {
                 "purchases": purchases,
