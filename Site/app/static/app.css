@@ -74,6 +74,10 @@ body {
   padding: 10px 14px;
   border-radius: 10px;
   font-weight: 600;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1.2;
 }
 
 .btn-light {
@@ -192,17 +196,20 @@ pre {
   margin-bottom: 0;
 }
 
-.support-fab {
+button.support-fab {
+  all: unset;
   position: fixed;
   right: 20px;
   bottom: 20px;
   width: 58px;
   height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 999px;
-  border: none;
   background: #3069ff;
   color: #fff;
-  font-size: 24px;
+  font-size: 26px;
   cursor: pointer;
   box-shadow: 0 10px 24px rgba(25, 48, 108, 0.55);
   z-index: 50;
@@ -212,7 +219,8 @@ pre {
   position: fixed;
   right: 20px;
   bottom: 88px;
-  width: min(380px, calc(100vw - 24px));
+  width: 340px;
+  max-width: calc(100vw - 24px);
   max-height: 70vh;
   border: 1px solid #2b3f5d;
   border-radius: 14px;
@@ -234,12 +242,22 @@ pre {
   margin-bottom: 8px;
 }
 
-.support-widget-close {
-  border: none;
-  background: transparent;
+button.support-widget-close {
+  all: unset;
   color: #c7d4ea;
-  font-size: 20px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 18px;
   cursor: pointer;
+  background: #1a273b;
+}
+
+button.support-widget-close:hover {
+  background: #24344f;
 }
 
 .support-widget-body {
@@ -258,4 +276,17 @@ pre {
   margin: 0;
   color: #91a4c3;
   font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .support-widget {
+    right: 12px;
+    bottom: 80px;
+    max-width: calc(100vw - 24px);
+  }
+
+  button.support-fab {
+    right: 12px;
+    bottom: 12px;
+  }
 }
