@@ -22,9 +22,34 @@ class WgEasyProvider(VpnProvider):
 
     def __init__(self, config: WgEasyConfig) -> None:
         self._base_url = config.base_url.rstrip("/")
+        self._username = config.username
+        self._password = config.password
         self._auth = (config.username, config.password)
         self._verify_tls = config.verify_tls
         self._timeout = config.timeout_seconds
+
+    def _login_session(self, client: httpx.Client) -> bool:
+        """
+        Some wg-easy v15 builds require session cookie auth for /api/*.
+        Try to establish an authenticated session and keep cookies in client jar.
+        """
+        payloads = (
+            {"username": self._username, "password": self._password},
+            {"password": self._password},
+        )
+        for payload in payloads:
+            try:
+                response = client.post("/api/session", json=payload)
+            except httpx.HTTPError:
+                return False
+            if response.status_code in {200, 201, 204}:
+                return True
+            # Wrong payload shape (varies by wg-easy build) -> try next.
+            if response.status_code in {400, 404, 405, 415, 422}:
+                continue
+            if response.status_code in {401, 403}:
+                return False
+        return False
 
     def _request(
         self,
@@ -42,6 +67,11 @@ class WgEasyProvider(VpnProvider):
                 timeout=self._timeout,
             ) as client:
                 response = client.request(method, path, json=json)
+                # Fallback for wg-easy builds that reject Basic auth and require
+                # a session cookie created via /api/session.
+                if response.status_code == 401 and "Session failed" in response.text:
+                    if self._login_session(client):
+                        response = client.request(method, path, json=json)
         except httpx.HTTPError as exc:
             raise RuntimeError(f"wg-easy request failed: {exc}") from exc
 
