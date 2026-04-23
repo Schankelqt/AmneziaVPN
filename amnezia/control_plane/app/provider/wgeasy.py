@@ -42,6 +42,8 @@ class WgEasyProvider(VpnProvider):
         if self._auth_mode != "basic":
             return False
         payloads = (
+            {"username": self._username, "password": self._password, "remember": True},
+            {"username": self._username, "password": self._password, "remember": False},
             {"username": self._username, "password": self._password},
             {"password": self._password},
         )
