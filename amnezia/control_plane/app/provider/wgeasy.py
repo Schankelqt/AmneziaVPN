@@ -27,6 +27,10 @@ class WgEasyProvider(VpnProvider):
         self._password = config.password
         self._auth_mode = (config.auth_mode or "basic").strip().lower()
         self._auth = (config.username, config.password) if self._auth_mode == "basic" else None
+        self._default_headers: dict[str, str] = {}
+        if self._auth_mode == "header" and self._password:
+            # Some wg-easy builds accept password in plain Authorization header.
+            self._default_headers["Authorization"] = self._password
         self._verify_tls = config.verify_tls
         self._timeout = config.timeout_seconds
 
@@ -67,6 +71,7 @@ class WgEasyProvider(VpnProvider):
             with httpx.Client(
                 base_url=self._base_url,
                 auth=self._auth,
+                headers=self._default_headers,
                 verify=self._verify_tls,
                 timeout=self._timeout,
             ) as client:

@@ -73,12 +73,14 @@ def _build_provider() -> tuple[str, VpnProvider]:
         timeout_raw = os.environ.get("WG_EASY_TIMEOUT_SECONDS", "10").strip()
         if not base_url:
             raise RuntimeError("VPN_PROVIDER=wgeasy requires WG_EASY_BASE_URL")
-        if auth_mode not in {"basic", "none"}:
-            raise RuntimeError("WG_EASY_AUTH_MODE must be one of: basic, none")
+        if auth_mode not in {"basic", "header", "none"}:
+            raise RuntimeError("WG_EASY_AUTH_MODE must be one of: basic, header, none")
         if auth_mode == "basic" and (not username or not password):
             raise RuntimeError(
                 "WG_EASY_AUTH_MODE=basic requires WG_EASY_USERNAME and WG_EASY_PASSWORD"
             )
+        if auth_mode == "header" and not password:
+            raise RuntimeError("WG_EASY_AUTH_MODE=header requires WG_EASY_PASSWORD")
         return "wgeasy", WgEasyProvider(
             WgEasyConfig(
                 base_url=base_url,
