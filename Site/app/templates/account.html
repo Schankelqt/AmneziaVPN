@@ -75,28 +75,53 @@
   {% endif %}
 </div>
 
-<h2>Поддержка</h2>
-<div class="card stack">
-  <p>Напишите в поддержку прямо здесь. Сообщение сразу уходит в Telegram-команду.</p>
-  <form method="post" action="/account/support" class="stack">
-    <label for="support-message">Сообщение</label>
-    <textarea id="support-message" name="message" class="input" rows="4" placeholder="Опишите проблему или вопрос"></textarea>
-    <button class="btn" type="submit">Отправить в поддержку</button>
-  </form>
-  <p>Или напрямую в Telegram: <a href="{{ support_url }}" target="_blank" rel="noopener">{{ support_tg }}</a></p>
-</div>
+<button id="support-fab" class="support-fab" type="button" aria-controls="support-widget" aria-expanded="false">
+  💬
+</button>
 
-<h2>Диалог с поддержкой</h2>
-<div class="card stack">
-  {% if support_messages %}
-    {% for m in support_messages %}
-    <div class="support-message {% if m.direction == 'out' %}support-message-out{% else %}support-message-in{% endif %}">
-      <p><strong>{% if m.direction == "out" %}Вы{% else %}Поддержка{% endif %}:</strong> {{ m.body }}</p>
-      <p class="support-message-time">{{ m.created_at }}</p>
-    </div>
-    {% endfor %}
-  {% else %}
-    <p>Сообщений пока нет.</p>
-  {% endif %}
-</div>
+<section id="support-widget" class="support-widget" aria-hidden="true">
+  <div class="support-widget-head">
+    <strong>Поддержка</strong>
+    <button id="support-widget-close" class="support-widget-close" type="button" aria-label="Закрыть">✕</button>
+  </div>
+  <div class="support-widget-body">
+    {% if support_messages %}
+      {% for m in support_messages %}
+      <div class="support-message {% if m.direction == 'out' %}support-message-out{% else %}support-message-in{% endif %}">
+        <p><strong>{% if m.direction == "out" %}Вы{% else %}Поддержка{% endif %}:</strong> {{ m.body }}</p>
+        <p class="support-message-time">{{ m.created_at }}</p>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p>Сообщений пока нет.</p>
+    {% endif %}
+  </div>
+  <form method="post" action="/account/support" class="stack support-widget-form">
+    <textarea id="support-message" name="message" class="input" rows="3" placeholder="Ваш вопрос в поддержку"></textarea>
+    <button class="btn" type="submit">Отправить</button>
+  </form>
+  <p class="support-widget-meta">Или напрямую: <a href="{{ support_url }}" target="_blank" rel="noopener">{{ support_tg }}</a></p>
+</section>
+
+<script>
+  (function () {
+    var fab = document.getElementById("support-fab");
+    var widget = document.getElementById("support-widget");
+    var closeBtn = document.getElementById("support-widget-close");
+    if (!fab || !widget || !closeBtn) return;
+
+    function setOpen(open) {
+      widget.classList.toggle("support-widget-open", open);
+      widget.setAttribute("aria-hidden", open ? "false" : "true");
+      fab.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    fab.addEventListener("click", function () {
+      setOpen(!widget.classList.contains("support-widget-open"));
+    });
+    closeBtn.addEventListener("click", function () {
+      setOpen(false);
+    });
+  })();
+</script>
 {% endblock %}
