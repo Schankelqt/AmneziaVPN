@@ -55,6 +55,19 @@ def init_db() -> None:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS support_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            direction TEXT NOT NULL,
+            body TEXT NOT NULL,
+            tg_message_id INTEGER,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )
+        """
+    )
     existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(purchases)").fetchall()}
     if "integration_user_id" not in existing_columns:
         conn.execute("ALTER TABLE purchases ADD COLUMN integration_user_id INTEGER DEFAULT 0")

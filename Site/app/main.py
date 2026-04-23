@@ -40,7 +40,12 @@ def _bot_url() -> str:
     username = _env("SITE_BOT_USERNAME", "").lstrip("@")
     if username:
         return f"https://t.me/{username}"
-    return _env("SITE_BOT_URL", "https://t.me/horizonnetvpn_bot")
+    return _env("SITE_BOT_URL", "https://t.me/HorizonNetV_bot")
+
+
+def _support_url() -> str:
+    support_tg = _env("SITE_SUPPORT_TG", "@HorizonNetVPN_support").lstrip("@")
+    return f"https://t.me/{support_tg}"
 
 
 def _ctx(request: Request, extra: dict | None = None) -> dict:
@@ -53,7 +58,8 @@ def _ctx(request: Request, extra: dict | None = None) -> dict:
         "domain": _env("SITE_DOMAIN", "horizonnetvpn.ru"),
         "admin_domain": _env("ADMIN_DOMAIN", "admin.horizonnetvpn.ru"),
         "bot_url": _bot_url(),
-        "support_tg": _env("SITE_SUPPORT_TG", "@horizonnetvpn_support"),
+        "support_tg": _env("SITE_SUPPORT_TG", "@HorizonNetVPN_support"),
+        "support_url": _support_url(),
         "price_month": _env("SITE_PRICE_MONTH", "299"),
         "price_quarter": _env("SITE_PRICE_QUARTER", "799"),
         "price_year": _env("SITE_PRICE_YEAR", "2490"),
@@ -91,6 +97,45 @@ def _bot_api_headers() -> dict[str, str]:
 
 def _control_plane_url() -> str:
     return _env("CONTROL_PLANE_INTERNAL_URL", "http://control-plane:8090").rstrip("/")
+
+
+def _support_bot_token() -> str:
+    return _env("SITE_SUPPORT_BOT_TOKEN") or _env("SITE_BOT_TOKEN")
+
+
+async def _send_support_message_to_telegram(user, message: str) -> int | None:
+    token = _support_bot_token()
+    chat_id = _env("SITE_SUPPORT_CHAT_ID")
+    if not token or not chat_id:
+        return None
+    thread_id = _env("SITE_SUPPORT_THREAD_ID")
+    text = (
+        "New support request from site\n"
+        f"user_id: {user['public_id']}\n"
+        f"login: {user['login'] or '-'}\n"
+        f"email: {user['email'] or '-'}\n"
+        f"tg_id: {user['tg_id'] or '-'}\n\n"
+        f"{message}"
+    )
+    payload: dict[str, str | int] = {"chat_id": chat_id, "text": text}
+    if thread_id:
+        try:
+            payload["message_thread_id"] = int(thread_id)
+        except ValueError:
+            pass
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(f"https://api.telegram.org/bot{token}/sendMessage", json=payload)
+            if resp.status_code != 200:
+                return None
+            body = resp.json()
+            if not body.get("ok"):
+                return None
+            result = body.get("result") or {}
+            message_id = result.get("message_id")
+            return int(message_id) if message_id is not None else None
+    except (httpx.HTTPError, ValueError, TypeError):
+        return None
 
 
 def _integration_user_id(user) -> int:
@@ -410,6 +455,9 @@ async def account(request: Request):
     purchases = conn.execute(
         "SELECT * FROM purchases WHERE user_id = ? ORDER BY id DESC LIMIT 20", (user["id"],)
     ).fetchall()
+    support_messages = conn.execute(
+        "SELECT * FROM support_messages WHERE user_id = ? ORDER BY id DESC LIMIT 30", (user["id"],)
+    ).fetchall()
     return templates.TemplateResponse(
         request=request,
         name="account.html",
@@ -417,10 +465,65 @@ async def account(request: Request):
             request,
             {
                 "purchases": purchases,
+                "support_messages": support_messages,
                 "default_protocol": _default_protocol_for_user(user),
             },
         ),
     )
+
+
+@app.post("/account/support")
+async def account_support_send(request: Request, message: str = Form(...)):
+    uid = request.session.get("uid")
+    if not uid:
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (int(uid),)).fetchone()
+    if not user:
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    body = " ".join((message or "").split()).strip()
+    if len(body) < 5:
+        _set_flash(request, err="Сообщение слишком короткое.")
+        return RedirectResponse(url="/account", status_code=status.HTTP_303_SEE_OTHER)
+
+    tg_message_id = await _send_support_message_to_telegram(user, body)
+    conn.execute(
+        "INSERT INTO support_messages (user_id, direction, body, tg_message_id, created_at) VALUES (?, ?, ?, ?, ?)",
+        (user["id"], "out", body, tg_message_id, now_iso()),
+    )
+    conn.commit()
+    if tg_message_id is None:
+        _set_flash(
+            request,
+            err="Сообщение сохранено, но не отправлено в Telegram. Проверьте SITE_SUPPORT_CHAT_ID и токен.",
+        )
+    else:
+        _set_flash(request, ok="Сообщение отправлено в поддержку.")
+    return RedirectResponse(url="/account", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.post("/integrations/support/reply")
+async def support_reply_ingest(
+    token: str = Form(default=""),
+    public_id: str = Form(default=""),
+    message: str = Form(default=""),
+):
+    expected = _env("SITE_SUPPORT_INGEST_TOKEN")
+    if not expected or token != expected:
+        return {"ok": False, "error": "unauthorized"}
+    body = (message or "").strip()
+    if not public_id or len(body) < 1:
+        return {"ok": False, "error": "invalid_payload"}
+    user = conn.execute("SELECT * FROM users WHERE public_id = ?", (public_id.strip(),)).fetchone()
+    if not user:
+        return {"ok": False, "error": "user_not_found"}
+    conn.execute(
+        "INSERT INTO support_messages (user_id, direction, body, tg_message_id, created_at) VALUES (?, ?, ?, ?, ?)",
+        (user["id"], "in", body, None, now_iso()),
+    )
+    conn.commit()
+    return {"ok": True}
 
 
 @app.post("/account/buy")

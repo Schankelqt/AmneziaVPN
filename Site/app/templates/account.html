@@ -74,4 +74,29 @@
     <p>Покупок пока нет.</p>
   {% endif %}
 </div>
+
+<h2>Поддержка</h2>
+<div class="card stack">
+  <p>Напишите в поддержку прямо здесь. Сообщение сразу уходит в Telegram-команду.</p>
+  <form method="post" action="/account/support" class="stack">
+    <label for="support-message">Сообщение</label>
+    <textarea id="support-message" name="message" class="input" rows="4" placeholder="Опишите проблему или вопрос"></textarea>
+    <button class="btn" type="submit">Отправить в поддержку</button>
+  </form>
+  <p>Или напрямую в Telegram: <a href="{{ support_url }}" target="_blank" rel="noopener">{{ support_tg }}</a></p>
+</div>
+
+<h2>Диалог с поддержкой</h2>
+<div class="card stack">
+  {% if support_messages %}
+    {% for m in support_messages %}
+    <div class="support-message {% if m.direction == 'out' %}support-message-out{% else %}support-message-in{% endif %}">
+      <p><strong>{% if m.direction == "out" %}Вы{% else %}Поддержка{% endif %}:</strong> {{ m.body }}</p>
+      <p class="support-message-time">{{ m.created_at }}</p>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p>Сообщений пока нет.</p>
+  {% endif %}
+</div>
 {% endblock %}
