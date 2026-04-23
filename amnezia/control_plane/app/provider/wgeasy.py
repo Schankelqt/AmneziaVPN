@@ -11,8 +11,9 @@ from .base import VpnProvider
 @dataclass(frozen=True)
 class WgEasyConfig:
     base_url: str
-    username: str
-    password: str
+    username: str = ""
+    password: str = ""
+    auth_mode: str = "basic"
     verify_tls: bool = True
     timeout_seconds: float = 10.0
 
@@ -24,7 +25,8 @@ class WgEasyProvider(VpnProvider):
         self._base_url = config.base_url.rstrip("/")
         self._username = config.username
         self._password = config.password
-        self._auth = (config.username, config.password)
+        self._auth_mode = (config.auth_mode or "basic").strip().lower()
+        self._auth = (config.username, config.password) if self._auth_mode == "basic" else None
         self._verify_tls = config.verify_tls
         self._timeout = config.timeout_seconds
 
@@ -33,6 +35,8 @@ class WgEasyProvider(VpnProvider):
         Some wg-easy v15 builds require session cookie auth for /api/*.
         Try to establish an authenticated session and keep cookies in client jar.
         """
+        if self._auth_mode != "basic":
+            return False
         payloads = (
             {"username": self._username, "password": self._password},
             {"password": self._password},
